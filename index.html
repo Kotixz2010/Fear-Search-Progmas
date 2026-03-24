@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FearSearch — Поиск игроков</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👻</text></svg>">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- AUTH GATE — показывается пока нет токена -->
+    <div id="auth-gate">
+        <div class="gate-card">
+            <div class="gate-logo">
+                <div class="logo-ghost" style="font-size:52px">👻</div>
+                <div class="logo-text" style="font-size:32px">Fear<span>Search</span></div>
+            </div>
+            <div class="gate-title">Требуется авторизация</div>
+            <div class="gate-desc">
+                Введи свой <strong>access_token</strong> с сайта fearproject.ru<br>
+                <a href="https://fearproject.ru" target="_blank" class="gate-link">fearproject.ru</a> → Профиль → Скопируй токен
+            </div>
+            <div class="gate-input-wrap">
+                <input type="text" id="gate-token-input" placeholder="Вставь access_token сюда..." autocomplete="off" spellcheck="false"
+                       onkeydown="if(event.key==='Enter') AuthManager.loginWithToken()">
+            </div>
+            <div class="gate-error" id="gate-error"></div>
+            <button class="gate-btn" id="gate-btn" onclick="AuthManager.loginWithToken()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                Войти
+            </button>
+        </div>
+    </div>
+
+    <!-- HEADER -->
+    <header>
+        <div class="logo">
+            <div class="logo-ghost">👻</div>
+            <div class="logo-text">Fear<span>Search</span></div>
+        </div>
+
+        <div class="header-stats">
+            <div class="hstat online-pill">
+                <span class="pulse-dot"></span>
+                <span>Live</span>
+            </div>
+            <div class="hstat">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                <span class="hstat-label">Серверов</span>
+                <span class="hstat-val" id="server-count">—</span>
+            </div>
+            <div class="hstat">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span class="hstat-label">Игроков</span>
+                <span class="hstat-val" id="player-count">—</span>
+            </div>
+            <div class="hstat">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span class="hstat-label">Обновлено</span>
+                <span class="hstat-val" id="last-update">—</span>
+            </div>
+        </div>
+
+        <div class="header-tabs">
+            <button class="tab-btn active" data-tab="main">Игроки</button>
+            <button class="tab-btn" data-tab="staff">
+                👮 Стафф
+                <span class="tab-badge" id="staff-online-badge">0</span>
+            </button>
+            <button class="tab-btn" data-tab="paid">
+                💰 Покупные
+                <span class="tab-badge" id="paid-online-badge">0</span>
+            </button>
+            <button class="tab-btn" data-tab="tracked">
+                👁 Отслеживаемые
+                <span class="tab-badge" id="tracked-badge">0</span>
+            </button>
+            <button class="tab-btn" data-tab="bans">
+                🔨 Баны
+            </button>
+        </div>
+
+        <div class="auth-block" id="auth-block">
+            <div id="auth-logged-out" style="display:none">
+            </div>
+            <div id="auth-logged-in" style="display:none">
+                <img id="auth-avatar" src="" class="auth-avatar">
+                <div class="auth-info">
+                    <div class="auth-name" id="auth-name">—</div>
+                    <div class="auth-role" id="auth-role">—</div>
+                </div>
+                <button class="btn-logout" onclick="AuthManager.logout()">Выйти</button>
+            </div>
+        </div>
+
+        <button class="pause-btn" id="toggle-autoupdate">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            <span>Пауза</span>
+        </button>
+    </header>
+
+    <!-- MAIN TAB -->
+    <div class="tab-content active" id="tab-main">
+        <div class="layout">
+
+            <div class="col" data-col="all">
+                <div class="col-head">
+                    <div class="col-title">
+                        <span class="col-icon cyan">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </span>
+                        Все игроки
+                    </div>
+                    <div class="col-count cyan" id="all-count">0</div>
+                </div>
+                <div class="col-toolbar">
+                    <label class="toggler" id="toggle-unconfigured">
+                        <div class="toggler-track active"></div>
+                        <span>Ненастроенные</span>
+                    </label>
+                    <div class="searchbar">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                        <input type="text" id="search-input" placeholder="Ник или Steam ID...">
+                    </div>
+                </div>
+                <div class="cards" id="all-players">
+                    <div class="loader"><div class="loader-ring"></div><span>Загрузка игроков...</span></div>
+                </div>
+            </div>
+
+            <div class="col" data-col="unconfigured">
+                <div class="col-head">
+                    <div class="col-title">
+                        <span class="col-icon orange">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        </span>
+                        Ненастроенные
+                    </div>
+                    <div class="col-count orange" id="unconfigured-count">0</div>
+                </div>
+                <div class="cards" id="unconfigured-players">
+                    <div class="empty"><span class="empty-emoji">⏳</span><p>Ожидание данных...</p></div>
+                </div>
+            </div>
+
+            <div class="col" data-col="clean">
+                <div class="col-head">
+                    <div class="col-title">
+                        <span class="col-icon green">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        </span>
+                        Чистые игроки
+                    </div>
+                    <div class="col-count green" id="clean-count">0</div>
+                </div>
+                <div class="cards" id="clean-players">
+                    <div class="empty"><span class="empty-emoji">👻</span><p>Добавляй игроков кнопкой ниже</p></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- PAID ADMINS TAB -->
+    <div class="tab-content" id="tab-paid">
+        <div class="staff-layout">
+            <div class="staff-groups" id="paid-groups">
+                <div class="empty"><span class="empty-emoji">🔒</span><p>Требуется авторизация</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STAFF TAB -->
+    <div class="tab-content" id="tab-staff">
+        <div class="staff-layout">
+            <div class="staff-groups" id="staff-groups">
+                <div class="loader"><div class="loader-ring"></div><span>Загрузка...</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TRACKED TAB -->
+    <div class="tab-content" id="tab-tracked">
+        <div class="tracked-layout">
+
+            <!-- Левая панель: список отслеживаемых -->
+            <div class="tracked-panel">
+                <div class="tracked-panel-head">
+                    <div class="col-title">
+                        <span class="col-icon purple">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </span>
+                        Отслеживаемые
+                    </div>
+                    <div class="col-count purple" id="tracked-count">0</div>
+                </div>
+
+                <div class="tracked-add">
+                    <input type="text" id="track-input" placeholder="Steam ID (76561...)">
+                    <button class="btn-track-add" onclick="TrackedManager.addBySteamId()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Добавить
+                    </button>
+                </div>
+
+                <div class="tracked-list" id="tracked-list">
+                    <div class="empty"><span class="empty-emoji">👁</span><p>Добавь игроков для отслеживания</p></div>
+                </div>
+            </div>
+
+            <!-- Правая панель: лог событий -->
+            <div class="tracked-panel">
+                <div class="tracked-panel-head">
+                    <div class="col-title">
+                        <span class="col-icon yellow">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        </span>
+                        Лог событий
+                    </div>
+                    <button class="btn-clear-log" onclick="TrackedManager.clearLog()">Очистить</button>
+                </div>
+
+                <div class="tracked-log" id="tracked-log">
+                    <div class="empty"><span class="empty-emoji">📋</span><p>События появятся здесь</p></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- BANS TAB -->
+    <div class="tab-content" id="tab-bans">
+        <div class="bans-layout">
+            <div id="bans-stats" class="bans-stats" style="display:none"></div>
+            <div id="bans-months" class="bans-months" style="display:none"></div>
+            <div id="bans-list" class="bans-list">
+                <div class="empty"><span class="empty-emoji">🔨</span><p>Открой вкладку чтобы загрузить наказания</p></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
