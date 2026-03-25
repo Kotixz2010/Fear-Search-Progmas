@@ -11,6 +11,28 @@
 <body>
 
     <canvas id="bg-canvas"></canvas>
+    <canvas id="particles-canvas"></canvas>
+    <div id="bg-gif"></div>
+
+    <!-- UPDATE SCREEN — блокирует программу при наличии обновления -->
+    <div id="update-screen" style="display:none">
+        <div class="update-card">
+            <div class="update-logo">👻</div>
+            <div class="update-title">Доступно обновление</div>
+            <div class="update-version" id="update-version-text">Версия x.x.x</div>
+            <div class="update-desc">Необходимо обновить FearSearch для продолжения работы</div>
+            <div class="update-progress-wrap" id="update-progress-wrap" style="display:none">
+                <div class="update-progress-bar">
+                    <div class="update-progress-fill" id="update-progress-fill"></div>
+                </div>
+                <div class="update-progress-text" id="update-progress-text">Загрузка...</div>
+            </div>
+            <button class="update-btn" id="update-btn" onclick="window.electronAPI.installUpdate()">
+                ⬇️ Скачать и установить
+            </button>
+            <div class="update-note">Программа перезапустится автоматически</div>
+        </div>
+    </div>
 
     <!-- AUTH GATE — показывается пока нет токена -->
     <div id="auth-gate">
@@ -36,72 +58,202 @@
         </div>
     </div>
 
-    <!-- HEADER -->
-    <header>
-        <div class="logo">
-            <div class="logo-ghost">👻</div>
-            <div class="logo-text">Fear<span>Search</span></div>
-        </div>
-
-        <div class="header-stats">
-            <div class="hstat online-pill">
-                <span class="pulse-dot"></span>
-                <span>Live</span>
+    <!-- SIDEBAR -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-top">
+            <div class="sidebar-logo">
+                <div class="logo-ghost">👻</div>
+                <div class="logo-text sidebar-logo-text">Fear<span>Search</span></div>
             </div>
-            <div class="hstat">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-                <span class="hstat-label">Серверов</span>
-                <span class="hstat-val" id="server-count">—</span>
-            </div>
-            <div class="hstat">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                <span class="hstat-label">Игроков</span>
-                <span class="hstat-val" id="player-count">—</span>
-            </div>
-            <div class="hstat">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <span class="hstat-label">Обновлено</span>
-                <span class="hstat-val" id="last-update">—</span>
-            </div>
-        </div>
-
-        <div class="header-tabs">
-            <button class="tab-btn active" data-tab="main">Игроки</button>
-            <button class="tab-btn" data-tab="staff">
-                👮 Стафф
-                <span class="tab-badge" id="staff-online-badge">0</span>
-            </button>
-            <button class="tab-btn" data-tab="paid">
-                💰 Покупные
-                <span class="tab-badge" id="paid-online-badge">0</span>
-            </button>
-            <button class="tab-btn" data-tab="tracked">
-                👁 Отслеживаемые
-                <span class="tab-badge" id="tracked-badge">0</span>
-            </button>
-            <button class="tab-btn" data-tab="bans">
-                🔨 Баны
+            <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" onclick="Sidebar.toggle()" title="Свернуть">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
         </div>
 
-        <div class="auth-block" id="auth-block">
-            <div id="auth-logged-out" style="display:none">
+        <div class="sidebar-stats">
+            <div class="sidebar-stat">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span class="sidebar-stat-val" id="player-count">—</span>
+                <span class="sidebar-stat-label">Игроков</span>
             </div>
-            <div id="auth-logged-in" style="display:none">
-                <img id="auth-avatar" src="" class="auth-avatar">
-                <div class="auth-info">
-                    <div class="auth-name" id="auth-name">—</div>
-                    <div class="auth-role" id="auth-role">—</div>
+            <div class="sidebar-stat">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span class="sidebar-stat-val" id="last-update">—</span>
+                <span class="sidebar-stat-label">Обновлено</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <button class="sidebar-nav-item active" data-tab="main">
+                <span class="snav-icon">🎮</span>
+                <span class="snav-label">Игроки</span>
+            </button>
+            <button class="sidebar-nav-item" data-tab="staff">
+                <span class="snav-icon">👮</span>
+                <span class="snav-label">Стафф</span>
+                <span class="snav-badge" id="staff-online-badge">0</span>
+            </button>
+            <button class="sidebar-nav-item" data-tab="paid">
+                <span class="snav-icon">💰</span>
+                <span class="snav-label">Покупные</span>
+                <span class="snav-badge" id="paid-online-badge">0</span>
+            </button>
+            <button class="sidebar-nav-item" data-tab="tracked">
+                <span class="snav-icon">👁</span>
+                <span class="snav-label">Отслеживаемые</span>
+                <span class="snav-badge" id="tracked-badge">0</span>
+            </button>
+            <button class="sidebar-nav-item" data-tab="bans">
+                <span class="snav-icon">🔨</span>
+                <span class="snav-label">Баны</span>
+            </button>
+            <button class="sidebar-nav-item" data-tab="staffstats">
+                <span class="snav-icon">📊</span>
+                <span class="snav-label">Статистика стаффа</span>
+            </button>
+        </nav>
+
+        <div class="sidebar-bottom">
+            <div id="auth-logged-in" style="display:none" class="sidebar-user">
+                <img id="auth-avatar" src="" class="sidebar-avatar">
+                <div class="sidebar-user-info">
+                    <div class="sidebar-user-name" id="auth-name">—</div>
+                    <div class="sidebar-user-role" id="auth-role">—</div>
                 </div>
-                <button class="btn-logout" onclick="AuthManager.logout()">Выйти</button>
+                <button class="btn-logout sidebar-logout" onclick="AuthManager.logout()">Выйти</button>
+            </div>
+            <div id="auth-logged-out" style="display:none"></div>
+            <div class="sidebar-actions">
+                <button class="sidebar-action-btn" id="toggle-autoupdate" title="Пауза">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    <span class="snav-label">Пауза</span>
+                </button>
+                <button class="sidebar-action-btn" onclick="SettingsPanel.toggle()" title="Настройки">
+                    ⚙️ <span class="snav-label">Настройки</span>
+                </button>
             </div>
         </div>
+    </aside>
 
-        <button class="pause-btn" id="toggle-autoupdate">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-            <span>Пауза</span>
-        </button>
-    </header>
+    <!-- SETTINGS PANEL -->
+    <div id="settings-panel" class="settings-panel">
+        <div class="settings-panel-inner">
+            <div class="settings-section">
+                <div class="settings-section-title">🔍 Масштаб</div>
+                <div class="settings-row">
+                    <span>Размер</span>
+                    <input type="range" id="zoom-slider" min="60" max="150" value="100" oninput="SettingsPanel.setZoom(this.value)" style="flex:1">
+                    <span id="zoom-val">100%</span>
+                </div>
+                <div class="settings-row" style="gap:6px">
+                    <button class="settings-btn-sm" onclick="SettingsPanel.setZoom(80);document.getElementById('zoom-slider').value=80">80%</button>
+                    <button class="settings-btn-sm" onclick="SettingsPanel.setZoom(90);document.getElementById('zoom-slider').value=90">90%</button>
+                    <button class="settings-btn-sm" onclick="SettingsPanel.setZoom(100);document.getElementById('zoom-slider').value=100">100%</button>
+                    <button class="settings-btn-sm" onclick="SettingsPanel.setZoom(110);document.getElementById('zoom-slider').value=110">110%</button>
+                    <button class="settings-btn-sm" onclick="SettingsPanel.setZoom(125);document.getElementById('zoom-slider').value=125">125%</button>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">🎨 Тема</div>
+                <div class="theme-grid" id="theme-grid">
+                    <button class="theme-btn active" data-theme="default" onclick="SettingsPanel.setTheme('default', this)">
+                        <span class="theme-preview" style="background:linear-gradient(135deg,#a855f7,#00f0ff)"></span>Дефолт
+                    </button>
+                    <button class="theme-btn" data-theme="red" onclick="SettingsPanel.setTheme('red', this)">
+                        <span class="theme-preview" style="background:linear-gradient(135deg,#ff3d3d,#ff8c00)"></span>Красный
+                    </button>
+                    <button class="theme-btn" data-theme="green" onclick="SettingsPanel.setTheme('green', this)">
+                        <span class="theme-preview" style="background:linear-gradient(135deg,#00e676,#00bcd4)"></span>Зелёный
+                    </button>
+                    <button class="theme-btn" data-theme="pink" onclick="SettingsPanel.setTheme('pink', this)">
+                        <span class="theme-preview" style="background:linear-gradient(135deg,#ff3d8a,#a855f7)"></span>Розовый
+                    </button>
+                    <button class="theme-btn" data-theme="gold" onclick="SettingsPanel.setTheme('gold', this)">
+                        <span class="theme-preview" style="background:linear-gradient(135deg,#ffd700,#ff8c00)"></span>Золото
+                    </button>
+                    <button class="theme-btn" data-theme="ice" onclick="SettingsPanel.setTheme('ice', this)">
+                        <span class="theme-preview" style="background:linear-gradient(135deg,#00f0ff,#3d8fff)"></span>Лёд
+                    </button>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">✨ Частицы</div>
+                <div class="particles-controls">
+                    <label class="settings-toggle">
+                        <input type="checkbox" id="particles-enabled" checked onchange="SettingsPanel.toggleParticles(this.checked)">
+                        <span class="settings-toggle-track"></span>
+                        Включить частицы
+                    </label>
+                    <div class="settings-row">
+                        <span>Тип</span>
+                        <select id="particles-type" onchange="SettingsPanel.setParticlesType(this.value)" class="settings-select">
+                            <option value="stars">⭐ Звёзды</option>
+                            <option value="snow">❄️ Снег</option>
+                            <option value="dots">✦ Точки</option>
+                            <option value="sakura">🌸 Сакура</option>
+                            <option value="hearts">❤️ Сердца</option>
+                            <option value="diamonds">💎 Ромбы</option>
+                        </select>
+                    </div>
+                    <div class="settings-row">
+                        <span>Количество</span>
+                        <input type="range" id="particles-count" min="10" max="150" value="60" oninput="SettingsPanel.setParticlesCount(this.value)" style="flex:1">
+                        <span id="particles-count-val">60</span>
+                    </div>
+                    <div class="settings-row">
+                        <span>Размер</span>
+                        <input type="range" id="particles-size" min="5" max="30" value="10" oninput="SettingsPanel.setParticlesSize(this.value)" style="flex:1">
+                        <span id="particles-size-val">1.0x</span>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">🖼️ Медиа на фоне</div>
+                <div class="gif-controls">
+                    <!-- Загрузка с диска -->
+                    <div class="settings-row" style="gap:6px">
+                        <button class="settings-btn-sm" onclick="document.getElementById('gif-file-input').click()">📁 Файл с диска</button>
+                        <input type="file" id="gif-file-input" accept="image/*,video/gif" style="display:none" onchange="SettingsPanel.loadFromFile(this)">
+                        <button class="settings-btn-sm danger" onclick="SettingsPanel.removeGif()">✕ Убрать</button>
+                    </div>
+                    <input type="text" id="gif-url-input" placeholder="или вставь URL..." class="settings-input">
+                    <button class="settings-btn-sm" style="width:100%" onclick="SettingsPanel.applyGif()">Применить URL</button>
+                    <div class="settings-row">
+                        <span>Прозрачность</span>
+                        <input type="range" id="gif-opacity" min="1" max="60" value="8" oninput="SettingsPanel.setGifOpacity(this.value)" style="flex:1">
+                        <span id="gif-opacity-val">8%</span>
+                    </div>
+                    <div class="settings-row">
+                        <span>Размер</span>
+                        <input type="range" id="gif-size" min="100" max="800" value="300" oninput="SettingsPanel.setGifSize(this.value)" style="flex:1">
+                        <span id="gif-size-val">300px</span>
+                    </div>
+                    <div class="settings-row">
+                        <span>Позиция X</span>
+                        <input type="range" id="gif-x" min="0" max="100" value="50" oninput="SettingsPanel.setGifXY()" style="flex:1">
+                        <span id="gif-x-val">50%</span>
+                    </div>
+                    <div class="settings-row">
+                        <span>Позиция Y</span>
+                        <input type="range" id="gif-y" min="0" max="100" value="50" oninput="SettingsPanel.setGifXY()" style="flex:1">
+                        <span id="gif-y-val">50%</span>
+                    </div>
+                    <div class="settings-row">
+                        <span>Скруглить</span>
+                        <input type="range" id="gif-radius" min="0" max="50" value="12" oninput="SettingsPanel.setGifRadius(this.value)" style="flex:1">
+                        <span id="gif-radius-val">12px</span>
+                    </div>
+                    <div class="settings-row" style="font-size:11px;color:var(--t3)">
+                        💡 Перетащи изображение прямо на экран
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="settings-overlay" class="settings-overlay" onclick="SettingsPanel.toggle()"></div>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="app-main" id="app-main">
 
     <!-- MAIN TAB -->
     <div class="tab-content active" id="tab-main">
@@ -242,6 +394,36 @@
             </div>
         </div>
     </div>
+
+    <!-- STAFF STATS TAB -->
+    <div class="tab-content" id="tab-staffstats">
+        <div class="staffstats-layout">
+            <div class="staffstats-header">
+                <div class="staffstats-title">📊 Статистика стаффа</div>
+                <div class="staffstats-controls">
+                    <div class="ss-month-select" id="ss-month-select">
+                        <div class="ss-month-selected" onclick="StaffStatsManager.toggleDropdown()">
+                            <span id="ss-month-label">Загрузка...</span>
+                            <span class="bans-month-arrow">▼</span>
+                        </div>
+                        <div class="ss-month-dropdown" id="ss-month-dropdown"></div>
+                    </div>
+                    <button class="ss-refresh-btn" onclick="StaffStatsManager.refresh()">
+                        🔄 Обновить
+                    </button>
+                </div>
+            </div>
+            <div id="staffstats-progress" style="display:none" class="ss-progress-wrap">
+                <div class="ss-progress-bar"><div class="ss-progress-fill" id="ss-progress-fill"></div></div>
+                <div class="ss-progress-text" id="ss-progress-text">Загрузка...</div>
+            </div>
+            <div id="staffstats-list" class="staffstats-list">
+                <div class="empty"><span class="empty-emoji">📊</span><p>Открой вкладку чтобы загрузить статистику</p></div>
+            </div>
+        </div>
+    </div>
+
+    </main><!-- /app-main -->
 
     <script src="app.js"></script>
 </body>

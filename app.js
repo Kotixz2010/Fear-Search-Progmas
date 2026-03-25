@@ -36,7 +36,12 @@ const AuthManager = {
 
     hasAccess() {
         if (!this.user) return false;
-        return this.user.adminGroup !== null && this.user.adminGroup !== undefined;
+        const sid = this.user.steamid || this.user.steam_id || this.user.steamId || '';
+        if (STAFF_STEAMIDS_EXTRA.has(sid)) return true;
+        if (this.user.adminGroup !== null && this.user.adminGroup !== undefined) return true;
+        // JWT fallback — проверяем admins.json
+        const entry = StaffManager.adminMap[sid];
+        return !!(entry);
     },
 
     isStaff() {
@@ -58,13 +63,20 @@ const AuthManager = {
 
     // Показываем/скрываем вкладки в зависимости от роли
     applyTabVisibility() {
-        const staffTab = document.querySelector('.tab-btn[data-tab="staff"]');
-        const paidTab  = document.querySelector('.tab-btn[data-tab="paid"]');
-        const bansTab  = document.querySelector('.tab-btn[data-tab="bans"]');
+        const sel = (tab) => document.querySelector(`.sidebar-nav-item[data-tab="${tab}"]`);
         const show = this.isStaff();
-        if (staffTab) staffTab.style.display = show ? '' : 'none';
-        if (paidTab)  paidTab.style.display  = show ? '' : 'none';
-        if (bansTab)  bansTab.style.display  = show ? '' : 'none';
+        const sid = this.user?.steamid || this.user?.steam_id || '';
+
+        // Вкладки только для стаффа
+        ['staff','paid','bans'].forEach(tab => {
+            const el = sel(tab);
+            if (el) el.style.display = show ? '' : 'none';
+        });
+
+        // Статистика стаффа — только для конкретных steamid
+        const STAFFSTATS_WHITELIST = new Set(['76561198751025670', '76561199645130988']);
+        const statsEl = sel('staffstats');
+        if (statsEl) statsEl.style.display = (show && STAFFSTATS_WHITELIST.has(sid)) ? '' : 'none';
     },
 
     // Показать/скрыть gate
@@ -95,7 +107,14 @@ const AuthManager = {
             });
 
             if (!res.ok) {
-                this.setGateError('Неверный токен или нет доступа. Проверь и попробуй снова.');
+                const errData = await res.json().catch(() => ({}));
+                if (res.status === 403) {
+                    this.setGateError(
+                        `У аккаунта "${errData.name || ''}" нет прав администратора.\nКупи права на fearproject.ru`
+                    );
+                } else {
+                    this.setGateError('Неверный токен или нет доступа. Проверь и попробуй снова.');
+                }
                 return;
             }
 
@@ -104,16 +123,8 @@ const AuthManager = {
             // Получаем steamid из любого поля
             const sid = user.steamid || user.steam_id || user.steamId || '';
 
-            // Проверяем: либо есть adminGroup, либо steamid в ручном списке стаффа
-            const isManualStaff = STAFF_STEAMIDS_EXTRA.has(sid);
-
-            if (!isManualStaff && (user.adminGroup === null || user.adminGroup === undefined)) {
-                this.setGateError(
-                    `У аккаунта "${user.name}" нет прав администратора.\n` +
-                    `Купи права на fearproject.ru`
-                );
-                return;
-            }
+            // Фиксируем имя если не пришло
+            if (!user.name && !user.nickname) user.name = sid;
 
             // Всё ок — сохраняем и открываем UI
             this.token = token;
@@ -124,7 +135,7 @@ const AuthManager = {
             this.showGate(false);
             this.renderUI();
             UI.showToast(`✅ Добро пожаловать, ${user.name || user.nickname}!`);
-            await this.loadAdmins();
+            this.loadAdmins(); // не await — грузим в фоне
             App.startApp();
 
         } catch (e) {
@@ -293,6 +304,7 @@ const AuthManager = {
 // ── PAID ADMINS MANAGER ───────────────────────
 const PaidManager = {
     admins: [],
+    _openOffline: new Set(), // запоминаем открытые оффлайн-секции
 
     async _fetchLastlogoff() {
         const missing = this.admins.map(a => a.steamid).filter(id => !playerVacData[id]?.lastlogoff);
@@ -333,6 +345,12 @@ const PaidManager = {
             return;
         }
 
+        // Сохраняем состояние открытых оффлайн-секций
+        container.querySelectorAll('[id$="-offline"]').forEach(el => {
+            if (el.style.display !== 'none') this._openOffline.add(el.id);
+            else this._openOffline.delete(el.id);
+        });
+
         container.innerHTML = '';
 
         // Группируем: сначала ADMIN+, потом ADMIN
@@ -367,9 +385,14 @@ const PaidManager = {
                     ${offline.length > 0 ? `<button class="btn-toggle-offline" onclick="PaidManager.toggleOffline(this, 'paid-grp-${safeGid}-offline')">Показать оффлайн (${offline.length})</button>` : ''}
                 </div>
                 <div class="staff-members" id="paid-grp-${safeGid}"></div>
-                <div class="staff-members" id="paid-grp-${safeGid}-offline" style="display:none"></div>
+                <div class="staff-members" id="paid-grp-${safeGid}-offline" style="${this._openOffline.has(`paid-grp-${safeGid}-offline`) ? '' : 'display:none'}"></div>
             `;
             container.appendChild(section);
+            // Восстанавливаем текст кнопки если секция открыта
+            if (this._openOffline.has(`paid-grp-${safeGid}-offline`)) {
+                const btn = section.querySelector('.btn-toggle-offline');
+                if (btn) btn.textContent = `Скрыть оффлайн (${offline.length})`;
+            }
 
             const membersEl = document.getElementById(`paid-grp-${safeGid}`);
             const offlineEl = document.getElementById(`paid-grp-${safeGid}-offline`);
@@ -467,6 +490,9 @@ const PaidManager = {
         el.style.display = visible ? 'none' : 'grid';
         const count = btn.textContent.match(/\d+/)?.[0] || '';
         btn.textContent = visible ? `Показать оффлайн (${count})` : `Скрыть оффлайн (${count})`;
+        // Сохраняем состояние
+        if (visible) this._openOffline.delete(id);
+        else this._openOffline.add(id);
     }
 };
 
@@ -971,23 +997,27 @@ const DataManager = {
                 if (!playerVacData[player.steam_id]) steamIdsNeedingVac.push(player.steam_id);
             }
         }
-        if (steamIdsNeedingDates.length > 0) {
-            for (let i = 0; i < steamIdsNeedingDates.length; i += 100) {
-                const dates = await this.fetchExactAccountDates(steamIdsNeedingDates.slice(i, i + 100));
-                for (const [steamId, data] of Object.entries(dates)) {
-                    if (data.timecreated) playerAccountDates[steamId] = new Date(data.timecreated * 1000).toISOString();
-                    if (data.lastlogoff) playerVacData[steamId] = { ...(playerVacData[steamId] || {}), lastlogoff: new Date(data.lastlogoff * 1000).toISOString() };
-                }
-            }
+
+        // Запрашиваем даты и VAC параллельно
+        const [datesResult, vacResult] = await Promise.all([
+            steamIdsNeedingDates.length > 0
+                ? this.fetchExactAccountDates(steamIdsNeedingDates.slice(0, 100))
+                : Promise.resolve({}),
+            steamIdsNeedingVac.length > 0
+                ? this.fetchVacBans(steamIdsNeedingVac.slice(0, 100))
+                : Promise.resolve({}),
+        ]);
+
+        for (const [steamId, data] of Object.entries(datesResult)) {
+            if (data.timecreated) playerAccountDates[steamId] = new Date(data.timecreated * 1000).toISOString();
+            if (data.lastlogoff) playerVacData[steamId] = { ...(playerVacData[steamId] || {}), lastlogoff: new Date(data.lastlogoff * 1000).toISOString() };
+        }
+        if (Object.keys(datesResult).length > 0)
             localStorage.setItem('fearsearch_account_dates', JSON.stringify(playerAccountDates));
-        }
-        if (steamIdsNeedingVac.length > 0) {
-            for (let i = 0; i < steamIdsNeedingVac.length; i += 100) {
-                const vacResults = await this.fetchVacBans(steamIdsNeedingVac.slice(i, i + 100));
-                for (const [steamId, data] of Object.entries(vacResults)) playerVacData[steamId] = data;
-            }
+
+        for (const [steamId, data] of Object.entries(vacResult)) playerVacData[steamId] = data;
+        if (Object.keys(vacResult).length > 0)
             localStorage.setItem('fearsearch_vac_data', JSON.stringify(playerVacData));
-        }
         for (const server of servers) {
             if (!server.live_data || !server.live_data.players) continue;
             for (const player of server.live_data.players) {
@@ -1114,18 +1144,25 @@ const App = {
         this.startAutoUpdate();
     },
     setupTabs() {
-        document.querySelectorAll('.tab-btn').forEach(btn => {
+        // Поддерживаем и sidebar-nav-item и старые tab-btn
+        document.querySelectorAll('.sidebar-nav-item, .tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const tab = btn.dataset.tab;
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.querySelectorAll('.sidebar-nav-item, .tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active', 'tab-enter'));
                 btn.classList.add('active');
-                document.getElementById(`tab-${tab}`)?.classList.add('active');
-                // Автообновление банов при открытии/закрытии вкладки
+                const tabEl = document.getElementById(`tab-${tab}`);
+                if (tabEl) {
+                    tabEl.classList.add('active');
+                    requestAnimationFrame(() => tabEl.classList.add('tab-enter'));
+                }
                 if (tab === 'bans') {
                     BansManager.startAuto();
                 } else {
                     BansManager.stopAuto();
+                }
+                if (tab === 'staffstats') {
+                    StaffStatsManager.open();
                 }
             });
         });
@@ -1451,10 +1488,11 @@ const BansManager = {
             const headers = {};
             if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
 
-            const res = await fetch(`/api/fear/punishments?admin_steamid=${encodeURIComponent(steamid)}`, {
+            const res = await fetch(`/api/fear/punishments?admin_steamid=${encodeURIComponent(steamid)}${this._forceRefresh ? '&force=1' : ''}`, {
                 headers,
                 signal: AbortSignal.timeout(10 * 60 * 1000)
             });
+            this._forceRefresh = false;
             if (!res.ok) throw new Error(`Ошибка сервера: ${res.status}`);
             const data = await res.json();
             const bans  = data.bans  || [];
@@ -1500,6 +1538,22 @@ const BansManager = {
         const listEl   = document.getElementById('bans-list');
         const all = [...bans, ...mutes].sort((a, b) => b.created - a.created);
 
+        // Снятые = status=2 (Разбанен/Размучен — снят вручную)
+        // status=1 = Активен, status=4 = Истёк срок
+        const isRemoved = (b) => b.status === 2;
+        const removedCount = all.filter(isRemoved).length;
+        // Диагностика — логируем уникальные значения status
+        const statuses = [...new Set(all.map(b => b.status))];
+        console.log('[bans] статусы в данных:', statuses, '| снятых:', removedCount, '| пример:', JSON.stringify(all[0]).slice(0,200));
+        // Логируем первую запись со статусом 4
+        const s4 = all.find(b => b.status === 4);
+        if (s4) console.log('[bans] пример status=4:', JSON.stringify(s4));
+        // Логируем ВСЕ ключи первой записи чтобы найти поле снятия
+        if (all[0]) console.log('[bans] все ключи записи:', Object.keys(all[0]).join(', '));
+        // Ищем запись с ID 115993 (тот что был разбанен на скрине)
+        const knownUnban = all.find(b => b.id === 115993 || String(b.id) === '115993');
+        if (knownUnban) console.log('[bans] запись 115993 (разбанен):', JSON.stringify(knownUnban));
+
         // Считаем по месяцам (все наказания)
         const byMonth = {};
         for (const p of all) {
@@ -1516,27 +1570,31 @@ const BansManager = {
         statsEl.style.display = 'flex';
         statsEl.innerHTML = `
             <div class="bans-stat-card">
-                <div class="bans-stat-val">${all.length}</div>
-                <div class="bans-stat-label">Всего</div>
+                <div class="bans-stat-val" id="stat-total">${all.length}</div>
+                <div class="bans-stat-label" id="stat-total-label">Всего</div>
             </div>
             <div class="bans-stat-card">
-                <div class="bans-stat-val">${bans.length}</div>
+                <div class="bans-stat-val" id="stat-bans">${bans.length}</div>
                 <div class="bans-stat-label">Банов</div>
             </div>
             <div class="bans-stat-card">
-                <div class="bans-stat-val">${mutes.length}</div>
+                <div class="bans-stat-val" id="stat-mutes">${mutes.length}</div>
                 <div class="bans-stat-label">Мутов</div>
             </div>
             <div class="bans-stat-card highlight">
-                <div class="bans-stat-val">${thisMonth}</div>
+                <div class="bans-stat-val" id="stat-thismonth">${thisMonth}</div>
                 <div class="bans-stat-label">В этом месяце</div>
+            </div>
+            <div class="bans-stat-card" style="border-color:rgba(0,230,118,.3);background:rgba(0,230,118,.06)">
+                <div class="bans-stat-val" id="stat-removed" style="color:var(--green)">${removedCount}</div>
+                <div class="bans-stat-label">Снятые</div>
             </div>
             <div class="bans-stat-card">
                 <div class="bans-stat-val">${sortedMonths.length}</div>
                 <div class="bans-stat-label">Активных месяцев</div>
             </div>
             ${newCount > 0 ? `<div class="bans-stat-card new"><div class="bans-stat-val">+${newCount}</div><div class="bans-stat-label">Новых</div></div>` : ''}
-            <div class="bans-stat-info">${fromCache ? '📦 Кеш · ' : ''}Обновлено: <span id="bans-updated-at">${loadedAt}</span></div>
+            <div class="bans-stat-info">${fromCache ? '📦 Кеш · ' : ''}Обновлено: <span id="bans-updated-at">${loadedAt}</span> <button class="bans-refresh-btn" onclick="BansManager.forceRefresh()">🔄 Обновить</button></div>
         `;
 
         // ── По месяцам ──
@@ -1600,6 +1658,34 @@ const BansManager = {
 
     _currentMonthFilter: '',
     _currentSteamid: '',
+    _forceRefresh: false,
+    _innerTab: 'all', // 'all' | 'removed'
+
+    switchInner(tab, btn) {
+        this._innerTab = tab;
+        document.querySelectorAll('.bans-inner-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        // Перерендерим текущие данные
+        const steamid = this._currentSteamid || (AuthManager.user?.steamid || AuthManager.user?.steam_id);
+        if (!steamid || !this._lastResult[steamid]) return;
+        const { bans, mutes } = this._lastResult[steamid];
+        const all = [...bans, ...mutes].sort((a, b) => b.created - a.created);
+        const listEl = document.getElementById('bans-list');
+        const existing = listEl.querySelectorAll('.ban-card, .bans-filter');
+        existing.forEach(c => c.remove());
+        if (tab === 'removed') {
+            const removed = all.filter(b => b.status === 0);
+            this._renderBanCards(listEl, removed, '');
+        } else {
+            this._applyMonthFilter(steamid, this._currentMonthFilter);
+        }
+    },
+
+    forceRefresh() {
+        this._forceRefresh = true;
+        const steamid = AuthManager.user?.steamid || AuthManager.user?.steam_id;
+        if (steamid) this._fetchAndUpdate(steamid, true);
+    },
 
     _toggleDropdown() {
         const sel = document.getElementById('bans-month-select');
@@ -1634,24 +1720,39 @@ const BansManager = {
         const all = [...(result?.bans || []), ...(result?.mutes || [])].sort((a, b) => b.created - a.created);
         const listEl = document.getElementById('bans-list');
 
-        // Обновляем мини-статистику
-        const statsEl = document.getElementById('bans-stats');
-        if (statsEl) {
-            const subset = month ? all.filter(b => {
+        // Фильтруем подмножество
+        const subset = month ? all.filter(b => {
+            const d = new Date(b.created * 1000);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            return key === month;
+        }) : all;
+
+        const subBans    = subset.filter(b => b.punish_type === 1).length;
+        const subMutes   = subset.filter(b => b.punish_type === 2).length;
+        const subRemoved = subset.filter(b => b.status === 2).length;
+        const label = month ? (() => {
+            const [y, m] = month.split('-');
+            return new Date(+y, +m - 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+        })() : 'Всего';
+
+        // Обновляем карточки по id
+        const setCard = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        setCard('stat-total', subset.length);
+        const labelEl2 = document.getElementById('stat-total-label');
+        if (labelEl2) labelEl2.textContent = label;
+        setCard('stat-bans', subBans);
+        setCard('stat-mutes', subMutes);
+        setCard('stat-removed', subRemoved);
+        // "В этом месяце" — показываем только если выбраны все
+        const thisMonthEl = document.getElementById('stat-thismonth');
+        if (thisMonthEl) {
+            const now = new Date();
+            const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const thisMonthCount = all.filter(b => {
                 const d = new Date(b.created * 1000);
-                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                return key === month;
-            }) : all;
-            const subBans  = subset.filter(b => b.punish_type === 1).length;
-            const subMutes = subset.filter(b => b.punish_type === 2).length;
-            const label = month ? (() => {
-                const [y, m] = month.split('-');
-                return new Date(+y, +m - 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
-            })() : 'Всего';
-            const cards = statsEl.querySelectorAll('.bans-stat-card');
-            if (cards[0]) { cards[0].querySelector('.bans-stat-val').textContent = subset.length; cards[0].querySelector('.bans-stat-label').textContent = label; }
-            if (cards[1]) cards[1].querySelector('.bans-stat-val').textContent = subBans;
-            if (cards[2]) cards[2].querySelector('.bans-stat-val').textContent = subMutes;
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === curKey;
+            }).length;
+            thisMonthEl.textContent = thisMonthCount;
         }
 
         const existing = listEl.querySelectorAll('.ban-card');
@@ -1694,13 +1795,16 @@ const BansManager = {
                 expiresDate = 'Навсегда';
             }
             const duration = this._formatDuration(ban.duration);
-            const status = ban.status === 0 ? '<span class="ban-status unbanned">Разбанен</span>'
+            const isRemovedBan = ban.status === 2;
+            const status = isRemovedBan
+                         ? '<span class="ban-status unbanned">Разбанен</span>'
                          : ban.status === 1 ? '<span class="ban-status active">Активен</span>'
                          : '<span class="ban-status expired">Истёк</span>';
             const avatar = escapeHtml(ban.avatar || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg');
 
             card.innerHTML = `
-                <img src="${avatar}" class="ban-avatar ${isMute ? 'mute' : ''}" loading="lazy"
+                <img src="${avatar}" class="ban-avatar ${isMute ? 'mute' : ''} ban-avatar-clickable" loading="lazy"
+                     onclick="App.openFearProfile('${escapeHtml(ban.steamid || '')}')" title="Открыть профиль на Fear"
                      onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
                 <div class="ban-info">
                     <div class="ban-name">${escapeHtml(ban.name || '—')} ${typeLabel}</div>
@@ -1710,8 +1814,10 @@ const BansManager = {
                 </div>
                 <div class="ban-status-col">
                     ${status}
-                    <button class="btn-steam-small" onclick="App.openSteamProfile('${escapeHtml(ban.steamid || '')}')">Steam</button>
-                    <button class="btn-fear-small" onclick="App.openFearProfile('${escapeHtml(ban.steamid || '')}')">Fear</button>
+                    <div class="ban-btns">
+                        <button class="btn-steam-small" onclick="App.openSteamProfile('${escapeHtml(ban.steamid || '')}')">Steam</button>
+                        <button class="btn-fear-small" onclick="App.openFearProfile('${escapeHtml(ban.steamid || '')}')">Fear</button>
+                    </div>
                 </div>
             `;
             container.appendChild(card);
@@ -1728,13 +1834,707 @@ const BansManager = {
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => App.init());
+// ── STAFF STATS MANAGER ──────────────────────
+const StaffStatsManager = {
+    _data: {},        // steamid -> { bans, mutes }
+    _months: [],      // все доступные месяцы ['2026-03', ...]
+    _selectedMonth: '',  // '' = все время
+    _loaded: false,
+    _loading: false,
+
+    // Группы стаффа (без медиа, без STAFF и STADMIN)
+    STAFF_GROUPS: new Set(['STMODER', 'MODER', 'MLMODER']),
+    // Whitelist — только эти steamid из STAFF показываем
+    STAFF_WHITELIST: new Set(['76561199826620628']),
+
+    getStaffList() {
+        return StaffManager.admins.filter(a => {
+            if (a.group_name === 'STAFF' || a.group_name === 'STADMIN') {
+                return this.STAFF_WHITELIST.has(a.steamid);
+            }
+            return this.STAFF_GROUPS.has(a.group_name);
+        });
+    },
+
+    open() {
+        // Проверяем доступ
+        const sid = AuthManager.user?.steamid || AuthManager.user?.steam_id || '';
+        const WHITELIST = new Set(['76561198751025670', '76561199645130988']);
+        if (!WHITELIST.has(sid)) {
+            document.getElementById('staffstats-list').innerHTML =
+                `<div class="empty"><span class="empty-emoji">🔒</span><p>Нет доступа</p></div>`;
+            return;
+        }
+        if (this._loaded) { this._render(); return; }
+        // Пробуем загрузить из localStorage кеша
+        try {
+            const cached = localStorage.getItem('fs_staffstats_cache');
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                this._data = parsed.data || {};
+                this._loaded = true;
+                this._buildMonths();
+                this._buildDropdown();
+                this._render();
+                // Показываем кеш сразу, потом тихо обновляем в фоне
+                const age = Date.now() - (parsed.savedAt || 0);
+                if (age > 30 * 60 * 1000) this.refresh(); // обновляем если старше 30 мин
+                return;
+            }
+        } catch {}
+        this.refresh();
+    },
+
+    async refresh() {
+        const staff = this.getStaffList();
+        if (staff.length === 0) {
+            document.getElementById('staffstats-list').innerHTML =
+                `<div class="empty"><span class="empty-emoji">👮</span><p>Список стаффа не загружен</p></div>`;
+            return;
+        }
+
+        this._data = {};
+        this._loading = true;
+        this._loaded = false;
+
+        const progressWrap = document.getElementById('staffstats-progress');
+        const progressFill = document.getElementById('ss-progress-fill');
+        const progressText = document.getElementById('ss-progress-text');
+
+        progressWrap.style.display = 'flex';
+        progressFill.style.width = '5%';
+        progressText.textContent = `Загружаю данные для ${staff.length} человек...`;
+
+        const headers = {};
+        if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
+
+        try {
+            // Один bulk запрос для всего стаффа
+            const steamids = staff.map(m => m.steamid).join(',');
+            const res = await fetch(`/api/fear/punishments/bulk?steamids=${encodeURIComponent(steamids)}`, {
+                headers, signal: AbortSignal.timeout(10 * 60 * 1000)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                for (const member of staff) {
+                    const d = data[member.steamid];
+                    if (d) {
+                        this._data[member.steamid] = { bans: d.bans || [], mutes: d.mutes || [] };
+                    } else {
+                        this._data[member.steamid] = { bans: [], mutes: [] };
+                    }
+                }
+                progressFill.style.width = '100%';
+            } else {
+                throw new Error(`HTTP ${res.status}`);
+            }
+        } catch (e) {
+            console.warn('[staffstats] bulk failed, fallback to individual:', e.message);
+            // Fallback — грузим по одному батчами по 6
+            let done = 0;
+            const BATCH = 6;
+            for (let i = 0; i < staff.length; i += BATCH) {
+                const chunk = staff.slice(i, i + BATCH);
+                await Promise.all(chunk.map(async (member) => {
+                    try {
+                        const r = await fetch(`/api/fear/punishments/by-admin?admin_steamid=${encodeURIComponent(member.steamid)}`, {
+                            headers, signal: AbortSignal.timeout(3 * 60 * 1000)
+                        });
+                        if (r.ok) {
+                            const d = await r.json();
+                            this._data[member.steamid] = { bans: d.bans || [], mutes: d.mutes || [] };
+                        } else {
+                            this._data[member.steamid] = { bans: [], mutes: [] };
+                        }
+                    } catch {
+                        this._data[member.steamid] = { bans: [], mutes: [] };
+                    }
+                    done++;
+                    progressFill.style.width = Math.round(done / staff.length * 100) + '%';
+                    progressText.textContent = `Загружаю ${done} / ${staff.length}...`;
+                    if (done % 3 === 0 || done === staff.length) {
+                        this._buildMonths(); this._buildDropdown(); this._render();
+                    }
+                }));
+            }
+        }
+
+        progressWrap.style.display = 'none';
+        this._loading = false;
+        this._loaded = true;
+        try {
+            localStorage.setItem('fs_staffstats_cache', JSON.stringify({ data: this._data, savedAt: Date.now() }));
+        } catch {}
+        this._buildMonths();
+        this._buildDropdown();
+        this._render();
+    },
+
+    _buildMonths() {
+        const monthSet = new Set();
+        for (const { bans, mutes } of Object.values(this._data)) {
+            for (const p of [...bans, ...mutes]) {
+                const d = new Date(p.created * 1000);
+                monthSet.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+            }
+        }
+        this._months = [...monthSet].sort((a,b) => b.localeCompare(a));
+        // Дефолт — текущий месяц если есть
+        const now = new Date();
+        const curKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+        this._selectedMonth = this._months.includes(curKey) ? curKey : '';
+    },
+
+    _buildDropdown() {
+        const staff = this.getStaffList();
+        const dropdown = document.getElementById('ss-month-dropdown');
+        const label    = document.getElementById('ss-month-label');
+        if (!dropdown) return;
+
+        // Считаем кол-во наказаний за каждый месяц (по всему стаффу)
+        const monthTotals = {};
+        for (const { bans, mutes } of Object.values(this._data)) {
+            for (const p of [...bans, ...mutes]) {
+                const d = new Date(p.created * 1000);
+                const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                monthTotals[k] = (monthTotals[k] || 0) + 1;
+            }
+        }
+        const totalAll = Object.values(this._data).reduce((s, d) => s + d.bans.length + d.mutes.length, 0);
+
+        const options = [
+            { value: '', label: 'Всё время', count: totalAll },
+            ...this._months.map(k => {
+                const [y, m] = k.split('-');
+                const name = new Date(+y, +m-1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+                return { value: k, label: name, count: monthTotals[k] || 0 };
+            })
+        ];
+
+        dropdown.innerHTML = options.map(o => `
+            <div class="ss-month-option${o.value === this._selectedMonth ? ' active' : ''}"
+                 onclick="StaffStatsManager._selectMonth('${o.value}', ${o.count}, this)">
+                <span>${o.label}</span>
+                <span class="opt-count">${o.count}</span>
+            </div>`).join('');
+
+        const cur = options.find(o => o.value === this._selectedMonth) || options[0];
+        if (label) label.innerHTML = `${cur.label} <span style="color:rgba(168,85,247,.8)">(${cur.count})</span>`;
+    },
+
+    toggleDropdown() {
+        document.getElementById('ss-month-select')?.classList.toggle('open');
+    },
+
+    _selectMonth(value, count, el) {
+        document.querySelectorAll('.ss-month-option').forEach(o => o.classList.remove('active'));
+        el.classList.add('active');
+        const label = document.getElementById('ss-month-label');
+        if (label) {
+            const name = el.querySelector('span:first-child').textContent;
+            label.innerHTML = `${name} <span style="color:rgba(168,85,247,.8)">(${count})</span>`;
+        }
+        document.getElementById('ss-month-select')?.classList.remove('open');
+        this._selectedMonth = value;
+        this._render();
+    },
+
+    _countFor(steamid) {
+        const d = this._data[steamid];
+        if (!d) return { bans: 0, mutes: 0, removed: 0, total: 0 };
+        const filter = p => {
+            if (!this._selectedMonth) return true;
+            const k = new Date(p.created * 1000);
+            return `${k.getFullYear()}-${String(k.getMonth()+1).padStart(2,'0')}` === this._selectedMonth;
+        };
+        const allBans  = d.bans.filter(filter);
+        const allMutes = d.mutes.filter(filter);
+        const bans   = allBans.length;
+        const mutes  = allMutes.length;
+        // status === 2 — снят вручную (Разбанен/Размучен)
+        const isRemoved = (p) => p.status === 2;
+        const removed = [...allBans, ...allMutes].filter(isRemoved).length;
+        return { bans, mutes, removed, total: bans + mutes };
+    },
+
+    _groupLabel(group_name) {
+        const MAP = { STAFF:'Стафф', STADMIN:'Ст. Администратор', STMODER:'Ст. Модер', MODER:'Модератор', MLMODER:'Мл. Модератор' };
+        return MAP[group_name] || group_name;
+    },
+
+    _render() {
+        const listEl = document.getElementById('staffstats-list');
+        if (!listEl) return;
+
+        const staff = this.getStaffList();
+        if (staff.length === 0) {
+            listEl.innerHTML = `<div class="empty"><span class="empty-emoji">👮</span><p>Нет данных</p></div>`;
+            return;
+        }
+
+        // Считаем и сортируем
+        const rows = staff.map(m => ({ ...m, ..._countFor_wrap(m.steamid, this) }))
+            .sort((a, b) => b.total - a.total || b.bans - a.bans);
+
+        const maxTotal = rows[0]?.total || 1;
+
+        let html = `<div class="ss-row ss-row-header">
+            <span>#</span><span></span><span>Стафф</span>
+            <span style="text-align:center">Баны</span>
+            <span style="text-align:center">Муты</span>
+            <span style="text-align:center">Снятые</span>
+            <span style="text-align:center">Всего</span>
+        </div>`;
+
+        rows.forEach((m, i) => {
+            const rank = i + 1;
+            const rankClass = rank === 1 ? 'top1' : rank === 2 ? 'top2' : rank === 3 ? 'top3' : '';
+            const avatar = m.avatar_full
+                ? `<img class="ss-avatar ss-avatar-clickable" src="${escapeHtml(m.avatar_full)}" loading="lazy" onclick="App.openFearProfile('${escapeHtml(m.steamid)}')" title="Открыть профиль на Fear">`
+                : `<div class="ss-avatar-placeholder ss-avatar-clickable" onclick="App.openFearProfile('${escapeHtml(m.steamid)}')" title="Открыть профиль на Fear">👤</div>`;
+            const barPct = maxTotal > 0 ? Math.round(m.total / maxTotal * 100) : 0;
+
+            html += `<div class="ss-row">
+                <span class="ss-rank ${rankClass}">${rank}</span>
+                ${avatar}
+                <div class="ss-info">
+                    <div class="ss-name">${escapeHtml(m.name)}</div>
+                    <div class="ss-group">${this._groupLabel(m.group_name)}</div>
+                </div>
+                <div class="ss-stat"><span class="ss-stat-val bans">${m.bans}</span><span class="ss-stat-label">Баны</span></div>
+                <div class="ss-stat"><span class="ss-stat-val mutes">${m.mutes}</span><span class="ss-stat-label">Муты</span></div>
+                <div class="ss-stat"><span class="ss-stat-val" style="color:var(--green)">${m.removed}</span><span class="ss-stat-label">Снятые</span></div>
+                <div class="ss-stat"><span class="ss-stat-val total">${m.total}</span><span class="ss-stat-label">Всего</span></div>
+                <div class="ss-bar-wrap"><div class="ss-bar" style="width:${barPct}%"></div></div>
+            </div>`;
+        });
+
+        listEl.innerHTML = html;
+
+        // Закрывать дропдаун при клике вне
+        document.addEventListener('click', (e) => {
+            const sel = document.getElementById('ss-month-select');
+            if (sel && !sel.contains(e.target)) sel.classList.remove('open');
+        });
+    },
+};
+
+function _countFor_wrap(steamid, mgr) { return mgr._countFor(steamid); }
+
+// ── PARTICLES SYSTEM ─────────────────────────
+const ParticlesSystem = {
+    canvas: null, ctx: null, particles: [], raf: null,
+    enabled: true, type: 'stars', count: 60, sizeMultiplier: 1.0,
+
+    init() {
+        this.canvas = document.getElementById('particles-canvas');
+        if (!this.canvas) return;
+        this.ctx = this.canvas.getContext('2d');
+        this.resize();
+        window.addEventListener('resize', () => { this.resize(); this.spawn(); });
+        this.spawn();
+        this.loop();
+    },
+
+    resize() {
+        if (!this.canvas) return;
+        this.canvas.width  = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+    },
+
+    spawn() {
+        this.particles = [];
+        for (let i = 0; i < this.count; i++) this.addParticle(true);
+    },
+
+    addParticle(random = false) {
+        const s = this.sizeMultiplier;
+        this.particles.push({
+            x: Math.random() * window.innerWidth,
+            y: random ? Math.random() * window.innerHeight : window.innerHeight + 20,
+            size: (Math.random() * 3 + 1.5) * s,
+            opacity: Math.random() * 0.55 + 0.15,
+            speedX: (Math.random() - 0.5) * 0.5,
+            speedY: -(Math.random() * 0.6 + 0.2),
+            rotation: Math.random() * Math.PI * 2,
+            rotSpeed: (Math.random() - 0.5) * 0.025,
+            wobble: Math.random() * Math.PI * 2,
+            wobbleSpeed: Math.random() * 0.018 + 0.004,
+            twinkle: Math.random() * Math.PI * 2,
+            twinkleSpeed: Math.random() * 0.05 + 0.02,
+        });
+    },
+
+    // ── Формы ──
+    drawStar(ctx, x, y, r, rot) {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+            const outer = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+            const inner = outer + Math.PI / 5;
+            if (i === 0) ctx.moveTo(Math.cos(outer) * r, Math.sin(outer) * r);
+            else ctx.lineTo(Math.cos(outer) * r, Math.sin(outer) * r);
+            ctx.lineTo(Math.cos(inner) * r * 0.42, Math.sin(inner) * r * 0.42);
+        }
+        ctx.closePath(); ctx.fill(); ctx.restore();
+    },
+
+    drawSnowflake(ctx, x, y, r, rot) {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+        ctx.lineWidth = r * 0.18;
+        ctx.strokeStyle = ctx.fillStyle;
+        for (let i = 0; i < 6; i++) {
+            const a = (i * Math.PI) / 3;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+            // Ветки
+            const bx = Math.cos(a) * r * 0.55, by = Math.sin(a) * r * 0.55;
+            const ba = a + Math.PI / 2;
+            ctx.moveTo(bx, by);
+            ctx.lineTo(bx + Math.cos(ba) * r * 0.28, by + Math.sin(ba) * r * 0.28);
+            ctx.moveTo(bx, by);
+            ctx.lineTo(bx - Math.cos(ba) * r * 0.28, by - Math.sin(ba) * r * 0.28);
+            ctx.stroke();
+        }
+        ctx.restore();
+    },
+
+    drawDot(ctx, x, y, r) {
+        // Точка с ореолом
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 2);
+        grad.addColorStop(0, ctx.fillStyle);
+        grad.addColorStop(0.4, ctx.fillStyle);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 2, 0, Math.PI * 2);
+        ctx.fill();
+    },
+
+    drawSakura(ctx, x, y, r, rot) {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+        for (let i = 0; i < 5; i++) {
+            ctx.save(); ctx.rotate((i * Math.PI * 2) / 5);
+            ctx.beginPath();
+            ctx.ellipse(0, -r * 0.65, r * 0.32, r * 0.58, 0, 0, Math.PI * 2);
+            ctx.fill(); ctx.restore();
+        }
+        // Центр
+        ctx.beginPath(); ctx.arc(0, 0, r * 0.18, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    },
+
+    drawHeart(ctx, x, y, r, rot) {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+        ctx.beginPath();
+        ctx.moveTo(0, r * 0.3);
+        ctx.bezierCurveTo(-r * 1.1, -r * 0.4, -r * 1.1, -r * 1.2, 0, -r * 0.5);
+        ctx.bezierCurveTo(r * 1.1, -r * 1.2, r * 1.1, -r * 0.4, 0, r * 0.3);
+        ctx.closePath(); ctx.fill(); ctx.restore();
+    },
+
+    drawDiamond(ctx, x, y, r, rot) {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+        ctx.beginPath();
+        ctx.moveTo(0, -r); ctx.lineTo(r * 0.6, 0);
+        ctx.lineTo(0, r); ctx.lineTo(-r * 0.6, 0);
+        ctx.closePath(); ctx.fill(); ctx.restore();
+    },
+
+    loop() {
+        if (!this.ctx) { this.raf = requestAnimationFrame(() => this.loop()); return; }
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        if (!this.enabled) { this.raf = requestAnimationFrame(() => this.loop()); return; }
+
+        const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent1').trim() || '#a855f7';
+
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.wobble += p.wobbleSpeed;
+            p.twinkle += p.twinkleSpeed;
+            p.x += p.speedX + Math.sin(p.wobble) * 0.35;
+            p.y += p.speedY;
+            p.rotation += p.rotSpeed;
+
+            if (p.y < -30) { this.particles.splice(i, 1); this.addParticle(); continue; }
+
+            // Мерцание для звёзд
+            const twinkleOpacity = this.type === 'stars' ? p.opacity * (0.7 + 0.3 * Math.sin(p.twinkle)) : p.opacity;
+            ctx.globalAlpha = twinkleOpacity;
+            ctx.fillStyle = accent;
+
+            const r = p.size;
+            switch (this.type) {
+                case 'stars':    this.drawStar(ctx, p.x, p.y, r * 1.8, p.rotation); break;
+                case 'snow':     this.drawSnowflake(ctx, p.x, p.y, r * 2.2, p.rotation); break;
+                case 'dots':     this.drawDot(ctx, p.x, p.y, r * 0.8); break;
+                case 'sakura':   this.drawSakura(ctx, p.x, p.y, r * 2.2, p.rotation); break;
+                case 'hearts':   this.drawHeart(ctx, p.x, p.y, r * 1.4, p.rotation); break;
+                case 'diamonds': this.drawDiamond(ctx, p.x, p.y, r * 1.8, p.rotation); break;
+                default:         this.drawStar(ctx, p.x, p.y, r * 1.8, p.rotation);
+            }
+        }
+        ctx.globalAlpha = 1;
+        this.raf = requestAnimationFrame(() => this.loop());
+    },
+
+    setEnabled(v) {
+        this.enabled = v;
+        if (!v && this.ctx) this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    },
+    setType(t) { this.type = t; this.spawn(); },
+    setCount(n) { this.count = Math.max(10, Math.min(200, n)); this.spawn(); },
+    setSizeMultiplier(v) { this.sizeMultiplier = v; this.spawn(); },
+};
+
+// ── SETTINGS PANEL ───────────────────────────
+const SettingsPanel = {
+    _open: false,
+
+    setZoom(v) {
+        const factor = parseInt(v, 10) / 100;
+        // Нативный зум Electron — масштабирует всё без обрезки
+        if (window.electronAPI?.setZoom) {
+            window.electronAPI.setZoom(factor);
+        }
+        document.body.style.zoom = '';
+        const lbl = document.getElementById('zoom-val');
+        if (lbl) lbl.textContent = parseInt(v) + '%';
+        const slider = document.getElementById('zoom-slider');
+        if (slider) slider.value = v;
+        localStorage.setItem('fs_zoom', v);
+    },
+
+    toggle() {
+        this._open = !this._open;
+        document.getElementById('settings-panel')?.classList.toggle('open', this._open);
+        document.getElementById('settings-overlay')?.classList.toggle('open', this._open);
+    },
+
+    setTheme(theme, btn) {
+        document.documentElement.setAttribute('data-theme', theme === 'default' ? '' : theme);
+        document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        localStorage.setItem('fs_theme', theme);
+        // Перезапускаем частицы чтобы подхватили новый цвет
+        ParticlesSystem.spawn();
+    },
+
+    toggleParticles(v) {
+        ParticlesSystem.setEnabled(v);
+        localStorage.setItem('fs_particles', v ? '1' : '0');
+    },
+
+    setParticlesType(t) {
+        ParticlesSystem.setType(t);
+        localStorage.setItem('fs_particles_type', t);
+    },
+
+    setParticlesCount(v) {
+        ParticlesSystem.setCount(parseInt(v));
+        const lbl = document.getElementById('particles-count-val');
+        if (lbl) lbl.textContent = v;
+        localStorage.setItem('fs_particles_count', v);
+    },
+
+    setParticlesSize(v) {
+        const factor = v / 10;
+        ParticlesSystem.setSizeMultiplier(factor);
+        const lbl = document.getElementById('particles-size-val');
+        if (lbl) lbl.textContent = factor.toFixed(1) + 'x';
+        localStorage.setItem('fs_particles_size', v);
+    },
+
+    // ── Гифка ──
+    _applyGifStyle() {
+        const el = document.getElementById('bg-gif');
+        if (!el || !el.style.backgroundImage || el.style.backgroundImage === 'none') return;
+        const x   = document.getElementById('gif-x')?.value   || 50;
+        const y   = document.getElementById('gif-y')?.value   || 50;
+        const sz  = document.getElementById('gif-size')?.value || 300;
+        const rad = document.getElementById('gif-radius')?.value || 12;
+        el.style.position   = 'fixed';
+        el.style.width      = sz + 'px';
+        el.style.height     = sz + 'px';
+        el.style.left       = x + '%';
+        el.style.top        = y + '%';
+        el.style.transform  = 'translate(-50%, -50%)';
+        el.style.borderRadius = rad + 'px';
+        el.style.backgroundSize   = 'cover';
+        el.style.backgroundRepeat = 'no-repeat';
+        el.style.zIndex     = '0';
+        el.style.pointerEvents = 'none';
+    },
+
+    applyGif() {
+        const url = document.getElementById('gif-url-input')?.value.trim();
+        if (!url) return;
+        const el = document.getElementById('bg-gif');
+        if (!el) return;
+        el.style.backgroundImage = `url('${url}')`;
+        this._applyGifStyle();
+        localStorage.setItem('fs_gif_url', url);
+    },
+
+    loadFromFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const el = document.getElementById('bg-gif');
+            if (!el) return;
+            el.style.backgroundImage = `url('${e.target.result}')`;
+            this._applyGifStyle();
+            localStorage.setItem('fs_gif_url', e.target.result);
+            const inp = document.getElementById('gif-url-input');
+            if (inp) inp.value = '(файл с диска)';
+        };
+        reader.readAsDataURL(file);
+    },
+
+    removeGif() {
+        const el = document.getElementById('bg-gif');
+        if (el) { el.style.backgroundImage = ''; el.style.cssText = ''; }
+        localStorage.removeItem('fs_gif_url');
+        const inp = document.getElementById('gif-url-input');
+        if (inp) inp.value = '';
+    },
+
+    setGifOpacity(v) {
+        const el = document.getElementById('bg-gif');
+        if (el) el.style.opacity = v / 100;
+        const lbl = document.getElementById('gif-opacity-val');
+        if (lbl) lbl.textContent = v + '%';
+        localStorage.setItem('fs_gif_opacity', v);
+    },
+
+    setGifSize(v) {
+        const lbl = document.getElementById('gif-size-val');
+        if (lbl) lbl.textContent = v + 'px';
+        localStorage.setItem('fs_gif_size', v);
+        this._applyGifStyle();
+    },
+
+    setGifXY() {
+        const x = document.getElementById('gif-x')?.value || 50;
+        const y = document.getElementById('gif-y')?.value || 50;
+        const lx = document.getElementById('gif-x-val');
+        const ly = document.getElementById('gif-y-val');
+        if (lx) lx.textContent = x + '%';
+        if (ly) ly.textContent = y + '%';
+        localStorage.setItem('fs_gif_x', x);
+        localStorage.setItem('fs_gif_y', y);
+        this._applyGifStyle();
+    },
+
+    setGifRadius(v) {
+        const lbl = document.getElementById('gif-radius-val');
+        if (lbl) lbl.textContent = v + 'px';
+        localStorage.setItem('fs_gif_radius', v);
+        this._applyGifStyle();
+    },
+
+    // Устаревший метод — оставляем для совместимости
+    setGifPosition(pos) { localStorage.setItem('fs_gif_pos', pos); },
+    _applyGifPos() { this._applyGifStyle(); },
+
+    restore() {
+        // Масштаб
+        const zoom = localStorage.getItem('fs_zoom');
+        if (zoom) this.setZoom(zoom);
+
+        // Тема
+        const theme = localStorage.getItem('fs_theme') || 'default';
+        if (theme !== 'default') {
+            document.documentElement.setAttribute('data-theme', theme);
+            document.querySelector(`.theme-btn[data-theme="${theme}"]`)?.classList.add('active');
+            document.querySelector('.theme-btn[data-theme="default"]')?.classList.remove('active');
+        }
+
+        // Частицы
+        const pe = localStorage.getItem('fs_particles');
+        if (pe === '0') {
+            ParticlesSystem.setEnabled(false);
+            const cb = document.getElementById('particles-enabled');
+            if (cb) cb.checked = false;
+        }
+        const pt = localStorage.getItem('fs_particles_type');
+        if (pt) {
+            ParticlesSystem.setType(pt);
+            const sel = document.getElementById('particles-type');
+            if (sel) sel.value = pt;
+        }
+        const pc = localStorage.getItem('fs_particles_count');
+        if (pc) {
+            this.setParticlesCount(pc);
+            const rng = document.getElementById('particles-count');
+            if (rng) rng.value = pc;
+        }
+        const ps = localStorage.getItem('fs_particles_size');
+        if (ps) {
+            this.setParticlesSize(ps);
+            const rng = document.getElementById('particles-size');
+            if (rng) rng.value = ps;
+        }
+
+        // Гифка
+        const gifUrl = localStorage.getItem('fs_gif_url');
+        if (gifUrl && gifUrl !== '(файл с диска)') {
+            const inp = document.getElementById('gif-url-input');
+            if (inp) inp.value = gifUrl;
+            const el = document.getElementById('bg-gif');
+            if (el) el.style.backgroundImage = `url('${gifUrl}')`;
+        }
+        const gifOp = localStorage.getItem('fs_gif_opacity');
+        if (gifOp) {
+            this.setGifOpacity(gifOp);
+            const rng = document.getElementById('gif-opacity');
+            if (rng) rng.value = gifOp;
+        }
+        // Восстанавливаем позицию/размер
+        const restoreSlider = (id, key, fn) => {
+            const v = localStorage.getItem(key);
+            if (v) { const el = document.getElementById(id); if (el) el.value = v; if (fn) fn(v); }
+        };
+        restoreSlider('gif-size',   'fs_gif_size',   null);
+        restoreSlider('gif-x',      'fs_gif_x',      null);
+        restoreSlider('gif-y',      'fs_gif_y',      null);
+        restoreSlider('gif-radius', 'fs_gif_radius', null);
+        if (gifUrl) this._applyGifStyle();
+    },
+};
+
+// ── SIDEBAR ──────────────────────────────────
+const Sidebar = {
+    toggle() {
+        const sb = document.getElementById('sidebar');
+        if (!sb) return;
+        const collapsed = sb.classList.toggle('collapsed');
+        localStorage.setItem('fs_sidebar_collapsed', collapsed ? '1' : '0');
+    },
+    restore() {
+        if (localStorage.getItem('fs_sidebar_collapsed') === '1') {
+            document.getElementById('sidebar')?.classList.add('collapsed');
+        }
+    },
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    App.init();
+    ParticlesSystem.init();
+    SettingsPanel.restore();
+    Sidebar.restore();
+});
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) { App.stopAutoUpdate(); BansManager.stopAuto(); }
     else {
         App.startAutoUpdate(); App.updateData();
         // Если вкладка баны активна — возобновляем
-        if (document.querySelector('.tab-btn[data-tab="bans"]')?.classList.contains('active')) {
+        if (document.querySelector('.sidebar-nav-item[data-tab="bans"]')?.classList.contains('active')) {
             BansManager.startAuto();
         }
     }
