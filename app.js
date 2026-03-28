@@ -1,4 +1,4 @@
-﻿// FearSearch App
+// FearSearch App
 const CONFIG = {
     API_URL: '/api/servers',
     STEAM_API_URL: '/api/steam/accountdates',
@@ -896,13 +896,32 @@ const SteamUtils = {
     }
 };
 
+const TOAST_STACK_ID = 'fearsearch-toast-stack';
+const MAX_TOASTS = 4;
+
 const UI = {
     showToast(message, type = 'success') {
+        let stack = document.getElementById(TOAST_STACK_ID);
+        if (!stack) {
+            stack = document.createElement('div');
+            stack.id = TOAST_STACK_ID;
+            stack.className = 'toast-stack';
+            document.body.appendChild(stack);
+        }
+        while (stack.children.length >= MAX_TOASTS) {
+            stack.lastElementChild?.remove();
+        }
         const toast = document.createElement('div');
         toast.className = type === 'error' ? 'toast error' : 'toast';
         toast.textContent = message;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 2500);
+        stack.insertBefore(toast, stack.firstChild);
+        setTimeout(() => {
+            toast.classList.add('toast-out');
+            setTimeout(() => {
+                toast.remove();
+                if (!stack.children.length) stack.remove();
+            }, 280);
+        }, 2500);
     },
     formatDate(date) {
         if (!date) return 'Неизвестно';

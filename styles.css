@@ -608,17 +608,37 @@ body {
 }
 .empty-emoji { font-size: 40px; opacity: .5; }
 
-/* ── TOAST ─────────────────────────────────── */
+/* ── TOAST (стек: сверху новые, снизу старые, до 4 шт.) ── */
+.toast-stack {
+    position: fixed;
+    bottom: 22px;
+    right: 22px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-end;
+    pointer-events: none;
+    max-width: min(420px, calc(100vw - 44px));
+}
+.toast-stack .toast {
+    position: relative;
+    pointer-events: auto;
+}
 .toast {
-    position: fixed; bottom: 22px; right: 22px; z-index: 9999;
     padding: 12px 20px;
     background: linear-gradient(135deg, var(--purple), var(--cyan));
     color: #fff; font-size: 13px; font-weight: 700;
     border-radius: 12px;
     box-shadow: 0 8px 30px rgba(0,0,0,.6), 0 0 20px rgba(168,85,247,.3);
     animation: toastPop .3s cubic-bezier(.34,1.56,.64,1);
+    transition: opacity .25s ease, transform .25s ease;
 }
 .toast.error { background: linear-gradient(135deg, var(--red), var(--pink)); }
+.toast.toast-out {
+    opacity: 0;
+    transform: translateY(10px) scale(.96);
+}
 @keyframes toastPop {
     from { transform: translateY(16px) scale(.9); opacity: 0; }
     to   { transform: translateY(0) scale(1); opacity: 1; }
@@ -2134,7 +2154,7 @@ body {
 .loader-ring { border-top-color: var(--accent1) !important; }
 
 /* Toast */
-.toast { background: linear-gradient(135deg, var(--accent1), var(--accent2)) !important; }
+.toast-stack .toast { background: linear-gradient(135deg, var(--accent1), var(--accent2)) !important; }
 
 /* Tab badges */
 .tab-badge { color: var(--accent1) !important; }
