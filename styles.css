@@ -2155,6 +2155,7 @@ body {
 
 /* Toast */
 .toast-stack .toast { background: linear-gradient(135deg, var(--accent1), var(--accent2)) !important; }
+.toast-stack .toast.error { background: linear-gradient(135deg, var(--red), var(--pink)) !important; }
 
 /* Tab badges */
 .tab-badge { color: var(--accent1) !important; }
