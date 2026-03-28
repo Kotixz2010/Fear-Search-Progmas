@@ -1,10 +1,17 @@
 {
-  "name": "fearsearch-railway",
-  "version": "2.0.10",
-  "description": "FearSearch - web version for Railway",
-  "main": "index.js",
+  "name": "fearsearch",
+  "version": "2.0.11",
+  "description": "FearSearch — десктоп и веб (Railway)",
+  "main": "main.js",
   "scripts": {
-    "start": "node index.js"
+    "build:icon": "node scripts/build-icon.js",
+    "prebuild": "node scripts/build-icon.js",
+    "start": "node index.js",
+    "electron": "electron .",
+    "dev": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:portable": "electron-builder --win portable --x64",
+    "release": "electron-builder --win --x64 --publish always"
   },
   "engines": {
     "node": ">=18"
@@ -12,6 +19,59 @@
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
+    "electron-updater": "^6.8.3",
     "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0",
+    "jimp": "^0.22.12",
+    "png-to-ico": "^2.1.8"
+  },
+  "build": {
+    "appId": "ru.fearproject.fearsearch",
+    "productName": "FearSearch",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Kotixz2010",
+        "repo": "Fear-Search-Progmas"
+      }
+    ],
+    "win": {
+      "icon": "icon.ico",
+      "artifactName": "FearSearch-Setup-${version}.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerLanguages": [
+        "ru_RU"
+      ],
+      "language": "1049"
+    },
+    "files": [
+      "main.js",
+      "index.js",
+      "server.js",
+      "app.js",
+      "index.html",
+      "styles.css",
+      "admins.json",
+      "icon.ico",
+      "node_modules/**/*",
+      "!node_modules/electron/**",
+      "!node_modules/electron-builder/**"
+    ],
+    "extraResources": [],
+    "asar": true
   }
 }
