@@ -2109,7 +2109,8 @@ const BansManager = {
         this._applyMonthFilter(sid, value);
         // Обновляем счётчик тикетов за выбранный месяц
         if (StaffStatsManager._ticketMonthly) {
-            const ticketEl = document.getElementById('stat-tickets');
+            const body2 = document.querySelector('#norma-combined-body') || document.getElementById('tab-bans');
+            const ticketEl = body2?.querySelector('#stat-tickets') || document.getElementById('stat-tickets');
             if (ticketEl) {
                 if (value) {
                     ticketEl.textContent = StaffStatsManager._ticketMonthly[value] || 0;
@@ -2146,9 +2147,22 @@ const BansManager = {
     },
 
     _updateTicketStats() {
-        const el = document.getElementById('stat-tickets');
-        if (!el || !this._tickets) return;
-        // Считаем по текущему фильтру месяца
+        const body = document.querySelector('#norma-combined-body') || document.getElementById('tab-bans');
+        const el = body?.querySelector('#stat-tickets') || document.getElementById('stat-tickets');
+        if (!el) return;
+        // Приоритет: _ticketMonthly из StaffStatsManager (серверный кеш по месяцам)
+        if (StaffStatsManager._ticketMonthly) {
+            const month = this._currentMonthFilter;
+            if (month) {
+                el.textContent = StaffStatsManager._ticketMonthly[month] || 0;
+            } else {
+                const total = Object.values(StaffStatsManager._ticketMonthly).reduce((s, v) => s + v, 0);
+                el.textContent = total;
+            }
+            return;
+        }
+        // Fallback: локальный массив тикетов
+        if (!this._tickets) return;
         const month = this._currentMonthFilter;
         const filtered = month ? this._tickets.filter(t => {
             const d = new Date(t.created_at || t.created || 0);
@@ -2187,16 +2201,17 @@ const BansManager = {
             return new Date(+y, +m - 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
         })() : 'Всего';
 
-        // Обновляем карточки по id
-        const setCard = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        // Обновляем карточки по id — ищем в активном контейнере
+        const getEl = (id) => body?.querySelector('#' + id) || document.getElementById(id);
+        const setCard = (id, val) => { const el = getEl(id); if (el) el.textContent = val; };
         setCard('stat-total', subActive);
-        const labelEl2 = document.getElementById('stat-total-label');
+        const labelEl2 = getEl('stat-total-label');
         if (labelEl2) labelEl2.textContent = label;
         setCard('stat-bans', subBans);
         setCard('stat-mutes', subMutes);
         setCard('stat-removed', subRemoved);
-        // "В этом месяце" — показываем только если выбраны все
-        const thisMonthEl = document.getElementById('stat-thismonth');
+        // "В этом месяце"
+        const thisMonthEl = getEl('stat-thismonth');
         if (thisMonthEl) {
             const now = new Date();
             const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -2576,7 +2591,9 @@ const StaffStatsManager = {
         if (!monthly) return;
         // Сохраняем в localStorage чтобы не терять при обновлении
         try { localStorage.setItem('fs_ticket_monthly', JSON.stringify(monthly)); } catch {}
-        const el = document.getElementById('stat-tickets');
+        // Ищем в активном контейнере
+        const body = document.querySelector('#norma-combined-body') || document.getElementById('tab-bans');
+        const el = body?.querySelector('#stat-tickets') || document.getElementById('stat-tickets');
         if (!el) return;
         if (this._selectedMonth) {
             el.textContent = monthly[this._selectedMonth] || 0;
