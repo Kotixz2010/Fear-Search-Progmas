@@ -1523,6 +1523,8 @@ const App = {
         if (btn) btn.classList.add('active');
         this._openCombinedSubTab(combined);
     },
+
+    _openCombinedSubTab(combined) {
         // Дефолтные подвкладки для каждого combined
         const DEFAULTS = { 'norma-combined': 'bans', 'staff-combined': 'staff' };
         const subtab = this._combinedSubTabs[combined] || DEFAULTS[combined] || 'bans';
