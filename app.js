@@ -1939,7 +1939,7 @@ const BansManager = {
         const thisMonth = byMonth[curKey] || 0;
         const loadedAt = new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-        const activeTotal = all.length - removedCount;
+        const activeTotal = activeBans + activeMutes; // Всего = активные баны + активные муты (снятые уже вычтены)
         const activeBans  = bans.filter(b => !isRemoved(b)).length;
         const activeMutes = mutes.filter(b => !isRemoved(b)).length;
 
@@ -2211,7 +2211,7 @@ const BansManager = {
         const subBans    = subset.filter(b => b.punish_type === 1 && b.status !== 2).length;
         const subMutes   = subset.filter(b => b.punish_type === 2 && b.status !== 2).length;
         const subRemoved = subset.filter(b => b.status === 2).length;
-        const subActive  = subset.length - subRemoved;
+        const subActive  = subBans + subMutes; // Всего = активные баны + активные муты
         const label = month ? (() => {
             const [y, m] = month.split('-');
             return new Date(+y, +m - 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
