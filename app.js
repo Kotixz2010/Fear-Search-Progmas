@@ -2077,12 +2077,15 @@ const BansManager = {
     },
 
     _toggleDropdown() {
-        const sel = document.getElementById('bans-month-select');
+        // Ищем в активном контейнере
+        const body = document.querySelector('#norma-combined-body') || document.getElementById('tab-bans');
+        const sel = body?.querySelector('#bans-month-select') || document.getElementById('bans-month-select');
         if (sel) sel.classList.toggle('open');
     },
 
     _outsideClick(e) {
-        const sel = document.getElementById('bans-month-select');
+        const body = document.querySelector('#norma-combined-body') || document.getElementById('tab-bans');
+        const sel = body?.querySelector('#bans-month-select') || document.getElementById('bans-month-select');
         if (sel && !sel.contains(e.target)) sel.classList.remove('open');
     },
 
@@ -2090,14 +2093,15 @@ const BansManager = {
         // Обновляем активный пункт
         document.querySelectorAll('.bans-month-option').forEach(o => o.classList.remove('active'));
         el.classList.add('active');
-        // Обновляем лейбл
-        const labelEl = document.getElementById('bans-month-label');
+        // Ищем лейбл и селект в активном контейнере
+        const body = document.querySelector('#norma-combined-body') || document.getElementById('tab-bans');
+        const labelEl = body?.querySelector('#bans-month-label') || document.getElementById('bans-month-label');
         if (labelEl) {
             const name = el.querySelector('span:first-child').textContent;
             labelEl.innerHTML = `${name} <span style="color:rgba(255,61,61,.8)">(${count})</span>`;
         }
         // Закрываем
-        const sel = document.getElementById('bans-month-select');
+        const sel = body?.querySelector('#bans-month-select') || document.getElementById('bans-month-select');
         if (sel) sel.classList.remove('open');
         // Фильтруем — используем _currentSteamid как приоритет
         const sid = this._currentSteamid || steamid || (AuthManager.user?.steamid || AuthManager.user?.steam_id || '');
@@ -2163,7 +2167,9 @@ const BansManager = {
             return;
         }
         const all = [...(result.bans || []), ...(result.mutes || [])].sort((a, b) => b.created - a.created);
-        const listEl = document.getElementById('bans-list');
+        // Ищем bans-list в активном контейнере
+        const body = document.querySelector('#norma-combined-body') || document.getElementById('tab-bans');
+        const listEl = body?.querySelector('#bans-list') || document.getElementById('bans-list');
 
         // Фильтруем подмножество
         const subset = month ? all.filter(b => {
@@ -2800,7 +2806,11 @@ const StaffStatsManager = {
     },
 
     _render() {
-        const listEl = document.getElementById('staffstats-list');
+        // Ищем в активном контейнере — norma-combined-body имеет приоритет
+        const container = document.querySelector('#norma-combined-body') ||
+                          document.getElementById('tab-staffstats');
+        const listEl = container?.querySelector('#staffstats-list') ||
+                       document.getElementById('staffstats-list');
         if (!listEl) return;
 
         const staff = this.getStaffList();
