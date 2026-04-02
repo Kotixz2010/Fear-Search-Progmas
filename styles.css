@@ -2313,51 +2313,111 @@ body {
 }
 
 /* ═══════════════════════════════════════════
-   SPLASH SCREEN
+   SPLASH SCREEN — Lunar Client style
    ═══════════════════════════════════════════ */
 #splash-screen {
     position: fixed; inset: 0; z-index: 999999;
-    background: var(--bg);
-    display: flex; align-items: center; justify-content: center;
-    flex-direction: column;
-    transition: opacity .4s ease, visibility .4s ease;
+    background: #08080f;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: opacity .5s ease, visibility .5s ease;
+    overflow: hidden;
 }
 #splash-screen.hidden {
     opacity: 0; visibility: hidden; pointer-events: none;
 }
+
 .splash-inner {
-    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 0;
+    position: relative; z-index: 1;
+    width: 380px;
+    flex: 1;
+    justify-content: center;
 }
+
+.splash-logo-wrap {
+    display: flex; flex-direction: column; align-items: center;
+    margin-bottom: 28px;
+    animation: splashLogoIn .6s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes splashLogoIn {
+    from { opacity: 0; transform: translateY(-20px) scale(.9); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 .splash-ghost {
-    font-size: 72px;
-    filter: drop-shadow(0 0 24px rgba(168,85,247,1));
-    animation: ghostFloat 2s ease-in-out infinite;
+    font-size: 90px;
+    filter: drop-shadow(0 0 24px rgba(0,230,118,.5));
+    animation: splashGhostFloat 2.5s ease-in-out infinite;
+    margin-bottom: 20px;
 }
+@keyframes splashGhostFloat {
+    0%,100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+}
+
 .splash-logo {
-    font-size: 36px; font-weight: 900; letter-spacing: -1px;
-    color: var(--t1);
+    font-size: 28px; font-weight: 900;
+    letter-spacing: 3px; text-transform: uppercase;
+    color: #fff;
+    margin-bottom: 10px;
 }
 .splash-logo span {
-    background: linear-gradient(90deg, var(--purple), var(--cyan));
-    -webkit-background-clip: text; background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #fff;
+    -webkit-text-fill-color: #fff;
 }
+
 .splash-status {
-    font-size: 13px; color: var(--t2);
+    font-size: 14px; color: rgba(255,255,255,.5);
+    margin-bottom: 28px;
     min-height: 20px; text-align: center;
-    transition: opacity .2s;
+    letter-spacing: .2px;
+    animation: splashFadeIn .4s ease .3s both;
 }
+@keyframes splashFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
 .splash-bar-wrap {
-    width: 220px; height: 3px;
-    background: rgba(255,255,255,.08);
-    border-radius: 2px; overflow: hidden;
+    width: 320px; height: 10px;
+    background: rgba(255,255,255,.07);
+    border-radius: 10px; overflow: visible;
+    position: relative;
+    animation: splashFadeIn .4s ease .4s both;
 }
 .splash-bar {
     height: 100%; width: 0%;
-    background: linear-gradient(90deg, var(--purple), var(--cyan));
-    border-radius: 2px;
-    transition: width .3s ease;
+    background: #00e676;
+    border-radius: 10px;
+    transition: width .4s cubic-bezier(.4,0,.2,1);
+    position: relative; z-index: 1;
+    box-shadow: 0 0 14px rgba(0,230,118,.7), 0 0 30px rgba(0,230,118,.3);
 }
+.splash-bar-glow {
+    display: none;
+}
+
+.splash-version {
+    font-size: 11px; color: rgba(255,255,255,.18);
+    margin-top: 20px;
+    letter-spacing: .5px;
+    animation: splashFadeIn .4s ease .6s both;
+}
+
+/* Ссылки внизу splash */
+.splash-footer {
+    position: absolute; bottom: 28px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 28px;
+    animation: splashFadeIn .4s ease .7s both;
+}
+.splash-footer a {
+    font-size: 13px; color: rgba(255,255,255,.35);
+    text-decoration: none; letter-spacing: .3px;
+    transition: color .2s;
+}
+.splash-footer a:hover { color: rgba(255,255,255,.7); }
 
 /* ═══════════════════════════════════════════
    CHECKER TAB
