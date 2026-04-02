@@ -441,12 +441,12 @@
             <div class="staffstats-header">
                 <div class="staffstats-title">📊 Статистика стаффа</div>
                 <div class="staffstats-controls">
-                    <div class="ss-month-select" id="ss-month-select">
-                        <div class="ss-month-selected" onclick="StaffStatsManager.toggleDropdown()">
-                            <span id="ss-month-label">Загрузка...</span>
+                    <div class="ss-month-select" id="ss-month-select" data-role="month-select">
+                        <div class="ss-month-selected" data-role="month-trigger" onclick="StaffStatsManager.toggleDropdown(this)">
+                            <span id="ss-month-label" data-role="month-label">Загрузка...</span>
                             <span class="bans-month-arrow">▼</span>
                         </div>
-                        <div class="ss-month-dropdown" id="ss-month-dropdown"></div>
+                        <div class="ss-month-dropdown" id="ss-month-dropdown" data-role="month-dropdown"></div>
                     </div>
                     <button class="ss-refresh-btn" onclick="StaffStatsManager.refresh()">
                         🔄 Обновить
@@ -467,7 +467,7 @@
         </div>
     </div>
 
-    <!-- CHECKER TAB -->
+        <!-- CHECKER TAB -->
     <div class="tab-content" id="tab-checker">
         <div class="checker-layout">
             <div class="checker-header">
