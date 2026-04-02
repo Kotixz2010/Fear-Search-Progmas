@@ -1552,12 +1552,21 @@ const App = {
 
         // Переносим контент нужной вкладки в body
         const source = document.getElementById(`tab-${validSubtab}`);
-        if (!source) return;
 
         body.innerHTML = '';
-        Array.from(source.children).forEach(child => {
-            body.appendChild(child.cloneNode(true));
-        });
+
+        if (source) {
+            Array.from(source.children).forEach(child => {
+                body.appendChild(child.cloneNode(true));
+            });
+        } else {
+            // Fallback — создаём контейнер напрямую
+            if (validSubtab === 'staff') {
+                body.innerHTML = '<div class="staff-layout"><div class="staff-groups" id="staff-groups"><div class="loader"><div class="loader-ring"></div><span>Загрузка...</span></div></div></div>';
+            } else if (validSubtab === 'paid') {
+                body.innerHTML = '<div class="staff-layout"><div class="staff-groups" id="paid-groups"><div class="loader"><div class="loader-ring"></div><span>Загрузка...</span></div></div></div>';
+            }
+        }
 
         // Обновляем активную кнопку
         document.querySelectorAll(`#tab-${combined} .combined-tab-btn`).forEach(b => {
