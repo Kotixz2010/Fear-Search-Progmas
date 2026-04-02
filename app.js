@@ -1,4 +1,4 @@
-// FearSearch App
+﻿// FearSearch App
 const CONFIG = {
     API_URL: '/api/servers',
     STEAM_API_URL: '/api/steam/accountdates',
@@ -6,6 +6,9 @@ const CONFIG = {
 
     UPDATE_INTERVAL: 5000,
 };
+
+// Рекорд стаффа
+const STAFF_RECORD = Object.freeze({ count: 810, author: 'молочныйРейдизан' });
 
 // State
 let serversData = [];
@@ -19,12 +22,96 @@ let searchQuery = '';
 let updateTimer = null;
 let showUnconfigured = true;
 
+// Кастомные ники (steamid → ник) — два слоя: серверный (nicknames.json) и пользовательский (localStorage)
+let customNicknames = {};
+fetch('/nicknames.json').then(r => r.ok ? r.json() : {}).then(d => { customNicknames = d; }).catch(() => {});
+
+// Пользовательские ники — хранятся в localStorage, перекрывают серверные
+let userNicknames = JSON.parse(localStorage.getItem('fearsearch_user_nicks') || '{}');
+
+function saveUserNicknames() {
+    localStorage.setItem('fearsearch_user_nicks', JSON.stringify(userNicknames));
+}
+
+// Получить отображаемый ник: пользовательский > серверный > null
+function getCustomNick(steamid) {
+    return userNicknames[steamid] || customNicknames[steamid] || null;
+}
+
+// Установить/удалить пользовательский ник
+function setUserNick(steamid, nick) {
+    if (nick && nick.trim()) {
+        userNicknames[steamid] = nick.trim();
+    } else {
+        delete userNicknames[steamid];
+    }
+    saveUserNicknames();
+}
+
+// Показать попап редактирования ника
+function editNickPopup(steamid, currentNick, event) {
+    event?.stopPropagation();
+    // Убираем старый попап если есть
+    document.querySelectorAll('.nick-edit-popup').forEach(p => p.remove());
+
+    const popup = document.createElement('div');
+    popup.className = 'nick-edit-popup';
+    popup.innerHTML = `
+        <div class="nick-edit-title">✏️ Кастомный ник</div>
+        <input class="nick-edit-input" type="text" value="${escapeHtml(currentNick || '')}" placeholder="Введи ник..." maxlength="32" autofocus>
+        <div class="nick-edit-btns">
+            <button class="nick-edit-save">Сохранить</button>
+            <button class="nick-edit-clear">Убрать</button>
+            <button class="nick-edit-cancel">Отмена</button>
+        </div>
+    `;
+
+    // Позиционируем рядом с курсором
+    const rect = event?.target?.getBoundingClientRect?.() || { left: 200, top: 200 };
+    popup.style.left = Math.min(rect.left, window.innerWidth - 260) + 'px';
+    popup.style.top = (rect.bottom + 4) + 'px';
+    document.body.appendChild(popup);
+
+    const input = popup.querySelector('.nick-edit-input');
+    input.focus();
+    input.select();
+
+    const close = () => popup.remove();
+
+    popup.querySelector('.nick-edit-save').onclick = () => {
+        setUserNick(steamid, input.value);
+        close();
+        App.renderColumns();
+        StaffManager.render(Object.fromEntries(allPlayers.map(p => [p.steam_id, p])));
+        PaidManager.render(Object.fromEntries(allPlayers.map(p => [p.steam_id, p])));
+    };
+    popup.querySelector('.nick-edit-clear').onclick = () => {
+        setUserNick(steamid, '');
+        close();
+        App.renderColumns();
+        StaffManager.render(Object.fromEntries(allPlayers.map(p => [p.steam_id, p])));
+        PaidManager.render(Object.fromEntries(allPlayers.map(p => [p.steam_id, p])));
+    };
+    popup.querySelector('.nick-edit-cancel').onclick = close;
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') popup.querySelector('.nick-edit-save').click();
+        if (e.key === 'Escape') close();
+    });
+
+    // Закрыть при клике вне
+    setTimeout(() => document.addEventListener('click', function handler(e) {
+        if (!popup.contains(e.target)) { close(); document.removeEventListener('click', handler); }
+    }), 100);
+}
+
 // ── AUTH MANAGER ─────────────────────────────
-// SteamID пользователей которым показывается вкладка "Стафф" и "Покупные"
-// Сюда можно добавить steamid вручную (дополнительно к тем кто есть в admins.json)
 const STAFF_STEAMIDS_EXTRA = new Set([
     '76561198751025670',
+    '76561199645130988',
 ]);
+
+// Владельцы — полный доступ ко всем функциям
+const OWNERS = new Set(['76561198751025670', '76561199645130988']);
 
 // Группы которые считаются "Стафф" (получают доступ к вкладкам Стафф и Покупные)
 const STAFF_GROUPS = new Set(['STAFF', 'STADMIN', 'STMODER', 'MODER', 'MLMODER', 'MEDIA']);
@@ -38,7 +125,7 @@ const AuthManager = {
         if (!this.user) return false;
         const sid = this.user.steamid || this.user.steam_id || this.user.steamId || '';
         if (STAFF_STEAMIDS_EXTRA.has(sid)) return true;
-        if (this.user.adminGroup !== null && this.user.adminGroup !== undefined) return true;
+        if (this.user.adminGroup !== null && this.user.adminGroup !== undefined && this.user.adminGroup !== 0) return true;
         // JWT fallback — проверяем admins.json
         const entry = StaffManager.adminMap[sid];
         return !!(entry);
@@ -66,17 +153,29 @@ const AuthManager = {
         const sel = (tab) => document.querySelector(`.sidebar-nav-item[data-tab="${tab}"]`);
         const show = this.isStaff();
         const sid = this.user?.steamid || this.user?.steam_id || '';
+        const isOwner = OWNERS.has(sid);
 
-        // Вкладки только для стаффа
-        ['staff','paid','bans'].forEach(tab => {
+        // Стафф+Покупные — только для стаффа
+        const staffCombinedEl = sel('staff-combined');
+        if (staffCombinedEl) staffCombinedEl.style.display = show ? '' : 'none';
+
+        // Норма — всегда видна
+        const normaCombinedEl = sel('norma-combined');
+        if (normaCombinedEl) normaCombinedEl.style.display = '';
+
+        // Паблик баны — только для овнеров
+        const pubEl = document.getElementById('nav-pubchecker') || sel('pubchecker');
+        if (pubEl) pubEl.style.display = isOwner ? '' : 'none';
+
+        // Статистика стаффа в объединённой вкладке — кнопка переключения только для овнеров
+        const statsBtn = document.querySelector('#tab-norma-combined .combined-tab-btn[data-subtab="staffstats"]');
+        if (statsBtn) statsBtn.style.display = isOwner ? '' : 'none';
+
+        // Старые вкладки (скрываем — используем объединённые)
+        ['staff','paid','bans','staffstats'].forEach(tab => {
             const el = sel(tab);
-            if (el) el.style.display = show ? '' : 'none';
+            if (el) el.style.display = 'none';
         });
-
-        // Статистика стаффа — только для конкретных steamid
-        const STAFFSTATS_WHITELIST = new Set(['76561198751025670', '76561199645130988']);
-        const statsEl = sel('staffstats');
-        if (statsEl) statsEl.style.display = (show && STAFFSTATS_WHITELIST.has(sid)) ? '' : 'none';
     },
 
     // Показать/скрыть gate
@@ -108,7 +207,13 @@ const AuthManager = {
 
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
-                if (res.status === 403) {
+                if (res.status === 403 && errData.error === 'frozen') {
+                    // Показываем экран заморозки
+                    const frozen = document.getElementById('frozen-screen');
+                    const frozenName = document.getElementById('frozen-name');
+                    if (frozen) frozen.style.display = 'flex';
+                    if (frozenName) frozenName.textContent = `${errData.name || ''} · ${errData.group_display_name || errData.group_name || ''}`;
+                } else if (res.status === 403) {
                     this.setGateError(
                         `У аккаунта "${errData.name || ''}" нет прав администратора.\nКупи права на fearproject.ru`
                     );
@@ -289,15 +394,49 @@ const AuthManager = {
     },
 
     async init() {
-        // Если нет сохранённого токена — показываем gate и не запускаем ничего
+        // Если нет сохранённого токена — показываем gate
         if (!this.token || !this.user) {
             this.showGate(true);
-            return false; // сигнал App.init что надо остановиться
+            return false;
         }
+        // Если есть кешированный пользователь — сразу показываем UI, проверяем в фоне
         this.showGate(false);
         this.renderUI();
-        await this.loadAdmins();
+        // loadAdmins без await — грузим в фоне
+        this.loadAdmins().catch(() => {});
+
+        // Фоновая проверка токена — не блокирует запуск
+        this._checkTokenInBackground();
         return true;
+    },
+
+    async _checkTokenInBackground() {
+        try {
+            const res = await fetch('/api/fear/me', {
+                headers: { 'x-auth-token': this.token },
+                signal: AbortSignal.timeout(5000)
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                // Только заморозку обрабатываем — всё остальное игнорируем
+                if (err.error === 'frozen') {
+                    const frozen = document.getElementById('frozen-screen');
+                    const frozenName = document.getElementById('frozen-name');
+                    if (frozen) frozen.style.display = 'flex';
+                    if (frozenName) frozenName.textContent = `${err.name || this.user?.name || ''} · ${err.group_display_name || err.group_name || ''}`;
+                    App.stopAutoUpdate();
+                }
+                // 401/403 и прочие ошибки — НЕ сбрасываем сессию, просто логируем
+                console.warn('[auth] background check status:', res.status, err.error || '');
+            } else {
+                const freshUser = await res.json();
+                this.user = { ...this.user, ...freshUser };
+                localStorage.setItem('fearsearch_user', JSON.stringify(this.user));
+                this.renderUI();
+            }
+        } catch (e) {
+            console.warn('[auth] background check error:', e.message);
+        }
     }
 };
 
@@ -332,6 +471,9 @@ const PaidManager = {
         const count = this.admins.filter(a => onlineMap[a.steamid]).length;
         const badge = document.getElementById('paid-online-badge');
         if (badge) badge.textContent = count;
+        // Обновляем бейдж в объединённой вкладке
+        const badge2 = document.getElementById('paid-online-badge2');
+        if (badge2) badge2.textContent = count;
         this.render(onlineMap);
     },
 
@@ -435,7 +577,17 @@ const PaidManager = {
                          class="staff-avatar ${isOnline ? 'online' : ''}" loading="lazy"
                          onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
                     <div class="staff-info">
-                        <div class="staff-name">${safeName} ${frozenBadge}</div>
+                        <div class="staff-name">
+                            ${(() => {
+                                const cn = getCustomNick(admin.steamid);
+                                const displayName = cn || safeName;
+                                if (isOnline && player.nickname !== displayName) {
+                                    return `<span title="Ник в игре">${escapeHtml(player.nickname)}</span><span class="staff-site-nick">${escapeHtml(displayName)}</span>`;
+                                }
+                                return escapeHtml(displayName);
+                            })()}
+                            ${frozenBadge}
+                        </div>
                         <div class="staff-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
                         ${onlineInfo}
                         ${lastSeenHtml}
@@ -551,6 +703,8 @@ const StaffManager = {
         const count = this.admins.filter(a => onlineMap[a.steamid]).length;
         const badge = document.getElementById('staff-online-badge');
         if (badge) badge.textContent = count;
+        const badge2 = document.getElementById('staff-online-badge2');
+        if (badge2) badge2.textContent = count;
     },
 
     render(onlineMap) {
@@ -635,7 +789,17 @@ const StaffManager = {
                     <img src="${safeAvatar}" class="staff-avatar ${isOnline ? 'online' : ''}" loading="lazy"
                          onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
                     <div class="staff-info">
-                        <div class="staff-name">${safeName} ${frozenBadge}</div>
+                        <div class="staff-name">
+                            ${(() => {
+                                const cn = getCustomNick(admin.steamid);
+                                const displayName = cn || safeName;
+                                if (isOnline && player.nickname !== displayName) {
+                                    return `<span title="Ник в игре">${escapeHtml(player.nickname)}</span><span class="staff-site-nick">${escapeHtml(displayName)}</span>`;
+                                }
+                                return escapeHtml(displayName);
+                            })()}
+                            ${frozenBadge}
+                        </div>
                         <div class="staff-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
                         ${onlineInfo}
                         ${lastSeenHtml}
@@ -896,32 +1060,20 @@ const SteamUtils = {
     }
 };
 
-const TOAST_STACK_ID = 'fearsearch-toast-stack';
-const MAX_TOASTS = 4;
-
 const UI = {
     showToast(message, type = 'success') {
-        let stack = document.getElementById(TOAST_STACK_ID);
-        if (!stack) {
-            stack = document.createElement('div');
-            stack.id = TOAST_STACK_ID;
-            stack.className = 'toast-stack';
-            document.body.appendChild(stack);
-        }
-        while (stack.children.length >= MAX_TOASTS) {
-            stack.lastElementChild?.remove();
-        }
+        const container = document.getElementById('toast-container') || document.body;
+
+        // Максимум 4 тоста — убираем самый старый (первый снизу = последний в DOM)
+        const existing = container.querySelectorAll('.toast');
+        if (existing.length >= 4) existing[existing.length - 1].remove();
+
         const toast = document.createElement('div');
         toast.className = type === 'error' ? 'toast error' : 'toast';
         toast.textContent = message;
-        stack.insertBefore(toast, stack.firstChild);
-        setTimeout(() => {
-            toast.classList.add('toast-out');
-            setTimeout(() => {
-                toast.remove();
-                if (!stack.children.length) stack.remove();
-            }, 280);
-        }, 2500);
+        // Новые добавляем в начало (сверху)
+        container.insertBefore(toast, container.firstChild);
+        setTimeout(() => toast.remove(), 2500);
     },
     formatDate(date) {
         if (!date) return 'Неизвестно';
@@ -1006,7 +1158,7 @@ const DataManager = {
         } catch (error) { console.warn('Failed to fetch VAC bans:', error); return {}; }
     },
     async processPlayers(servers) {
-        const players = [];
+        // Полный цикл (используется при автообновлении)
         const steamIdsNeedingDates = [];
         const steamIdsNeedingVac = [];
         for (const server of servers) {
@@ -1016,35 +1168,70 @@ const DataManager = {
                 if (!playerVacData[player.steam_id]) steamIdsNeedingVac.push(player.steam_id);
             }
         }
-
-        // Запрашиваем даты и VAC параллельно
-        const [datesResult, vacResult] = await Promise.all([
-            steamIdsNeedingDates.length > 0
-                ? this.fetchExactAccountDates(steamIdsNeedingDates.slice(0, 100))
-                : Promise.resolve({}),
-            steamIdsNeedingVac.length > 0
-                ? this.fetchVacBans(steamIdsNeedingVac.slice(0, 100))
-                : Promise.resolve({}),
-        ]);
-
-        for (const [steamId, data] of Object.entries(datesResult)) {
-            if (data.timecreated) playerAccountDates[steamId] = new Date(data.timecreated * 1000).toISOString();
-            if (data.lastlogoff) playerVacData[steamId] = { ...(playerVacData[steamId] || {}), lastlogoff: new Date(data.lastlogoff * 1000).toISOString() };
+        if (steamIdsNeedingDates.length > 0 || steamIdsNeedingVac.length > 0) {
+            const [datesResult, vacResult] = await Promise.all([
+                steamIdsNeedingDates.length > 0 ? this.fetchExactAccountDates(steamIdsNeedingDates.slice(0, 100)) : Promise.resolve({}),
+                steamIdsNeedingVac.length > 0    ? this.fetchVacBans(steamIdsNeedingVac.slice(0, 100))           : Promise.resolve({}),
+            ]);
+            for (const [steamId, data] of Object.entries(datesResult)) {
+                if (data.timecreated) playerAccountDates[steamId] = new Date(data.timecreated * 1000).toISOString();
+            }
+            if (Object.keys(datesResult).length > 0)
+                localStorage.setItem('fearsearch_account_dates', JSON.stringify(playerAccountDates));
+            for (const [steamId, data] of Object.entries(vacResult)) playerVacData[steamId] = data;
+            if (Object.keys(vacResult).length > 0)
+                localStorage.setItem('fearsearch_vac_data', JSON.stringify(playerVacData));
         }
-        if (Object.keys(datesResult).length > 0)
-            localStorage.setItem('fearsearch_account_dates', JSON.stringify(playerAccountDates));
+        return this._buildPlayerList(servers);
+    },
 
-        for (const [steamId, data] of Object.entries(vacResult)) playerVacData[steamId] = data;
-        if (Object.keys(vacResult).length > 0)
-            localStorage.setItem('fearsearch_vac_data', JSON.stringify(playerVacData));
+    // Фаза 1 — мгновенно, только из кеша
+    processPlayersQuick(servers) {
+        return this._buildPlayerList(servers);
+    },
+
+    // Фаза 2 — догружаем Steam API и возвращаем обновлённый список
+    async processPlayersSteam(servers) {
+        const steamIdsNeedingDates = [];
+        const steamIdsNeedingVac = [];
+        for (const server of servers) {
+            if (!server.live_data || !server.live_data.players) continue;
+            for (const player of server.live_data.players) {
+                if (!playerAccountDates[player.steam_id]) steamIdsNeedingDates.push(player.steam_id);
+                if (!playerVacData[player.steam_id]) steamIdsNeedingVac.push(player.steam_id);
+            }
+        }
+        if (steamIdsNeedingDates.length > 0 || steamIdsNeedingVac.length > 0) {
+            const [datesResult, vacResult] = await Promise.all([
+                steamIdsNeedingDates.length > 0 ? this.fetchExactAccountDates(steamIdsNeedingDates.slice(0, 100)) : Promise.resolve({}),
+                steamIdsNeedingVac.length > 0    ? this.fetchVacBans(steamIdsNeedingVac.slice(0, 100))           : Promise.resolve({}),
+            ]);
+            for (const [steamId, data] of Object.entries(datesResult)) {
+                if (data.timecreated) playerAccountDates[steamId] = new Date(data.timecreated * 1000).toISOString();
+                if (data.lastlogoff) playerVacData[steamId] = { ...(playerVacData[steamId] || {}), lastlogoff: new Date(data.lastlogoff * 1000).toISOString() };
+            }
+            if (Object.keys(datesResult).length > 0)
+                localStorage.setItem('fearsearch_account_dates', JSON.stringify(playerAccountDates));
+            for (const [steamId, data] of Object.entries(vacResult)) playerVacData[steamId] = data;
+            if (Object.keys(vacResult).length > 0)
+                localStorage.setItem('fearsearch_vac_data', JSON.stringify(playerVacData));
+        }
+        if (!DataManager._lastSeenSaved || Date.now() - DataManager._lastSeenSaved > 60000) {
+            localStorage.setItem('fearsearch_last_seen', JSON.stringify(playerLastSeenOnFear));
+            DataManager._lastSeenSaved = Date.now();
+        }
+        return this._buildPlayerList(servers);
+    },
+
+    _buildPlayerList(servers) {
+        const result = [];
         for (const server of servers) {
             if (!server.live_data || !server.live_data.players) continue;
             for (const player of server.live_data.players) {
                 const accountDate = playerAccountDates[player.steam_id] ? new Date(playerAccountDates[player.steam_id]) : null;
                 const vacInfo = playerVacData[player.steam_id] || null;
-                // Обновляем время последнего появления на серверах Fear
                 playerLastSeenOnFear[player.steam_id] = new Date().toISOString();
-                players.push({
+                result.push({
                     ...player,
                     server: { id: server.id, name: server.site_name, ip: server.ip, port: server.port, map: server.live_data.map_name },
                     accountDate, vacInfo,
@@ -1056,13 +1243,8 @@ const DataManager = {
                 });
             }
         }
-        // Сохраняем lastSeen раз в минуту чтобы не спамить localStorage
-        if (!DataManager._lastSeenSaved || Date.now() - DataManager._lastSeenSaved > 60000) {
-            localStorage.setItem('fearsearch_last_seen', JSON.stringify(playerLastSeenOnFear));
-            DataManager._lastSeenSaved = Date.now();
-        }
-        players.sort((a, b) => (b.accountDate?.getTime() || 0) - (a.accountDate?.getTime() || 0));
-        return players;
+        result.sort((a, b) => (b.accountDate?.getTime() || 0) - (a.accountDate?.getTime() || 0));
+        return result;
     },
     saveCleanPlayers() {
         localStorage.setItem('fearsearch_clean_players', JSON.stringify([...cleanPlayers]));
@@ -1091,6 +1273,15 @@ function createPlayerCard(player) {
     const safeAddress    = escapeHtml(`${player.server.ip}:${player.server.port}`);
     const safeAvatarUrl  = escapeHtml(avatarUrl);
 
+    // Ник на сайте (из admins.json)
+    const siteAdmin = StaffManager.adminMap[player.steam_id];
+    const siteNick = siteAdmin?.name || null;
+    const customNick = getCustomNick(player.steam_id);
+    const subNick = customNick || siteNick;
+    const siteNickHtml = subNick && subNick !== player.nickname
+        ? `<div class="player-site-nick" title="Известен как" onclick="editNickPopup('${escapeHtml(player.steam_id)}', '${escapeHtml(userNicknames[player.steam_id] || '')}', event)">✏️ ${escapeHtml(subNick)}</div>`
+        : `<div class="player-site-nick player-site-nick-empty" onclick="editNickPopup('${escapeHtml(player.steam_id)}', '', event)" title="Добавить ник">✏️</div>`;
+
     card.innerHTML = `
         ${player.is_admin ? '<span class="admin-badge">ADMIN</span>' : ''}
         ${player.isRecentVac ? `
@@ -1103,6 +1294,7 @@ function createPlayerCard(player) {
             <img src="${safeAvatarUrl}" alt="Avatar" class="player-avatar ${avatarClass}" loading="lazy">
             <div class="player-info">
                 <div class="player-nickname" title="${safeNickname}">${safeNickname}</div>
+                ${siteNickHtml}
                 <div class="player-steamid" onclick="App.copyToClipboard('${safeSteamId}')">${safeSteamId}</div>
             </div>
             <span class="player-team ${teamClass}">${teamLabel}</span>
@@ -1148,13 +1340,21 @@ const App = {
     async init() {
         this.setupEventListeners();
         this.setupTabs();
+        // Убираем тестовую тему если была включена
+        document.body.classList.remove('theme-test');
+        try { localStorage.removeItem('theme_test'); } catch {}
+        // Восстанавливаем состояние сайдбара
+        if (localStorage.getItem('fs_sidebar_collapsed') === '1') {
+            document.querySelector('.sidebar')?.classList.add('collapsed');
+        }
         const authed = await AuthManager.init();
-        if (!authed) return; // ждём пока пользователь введёт токен
+        if (!authed) return;
         await this.startApp();
     },
 
     // Запускается после успешной авторизации
     async startApp() {
+        // Используется при повторной авторизации (без splash)
         await StaffManager.load();
         TrackedManager.render();
         TrackedManager.renderLog();
@@ -1177,11 +1377,34 @@ const App = {
                 }
                 if (tab === 'bans') {
                     BansManager.startAuto();
+                    StaffStatsManager._updateTicketsCard(StaffStatsManager._ticketMonthly);
+                } else if (tab === 'norma-combined') {
+                    // Открываем активную подвкладку
+                    App._openCombinedSubTab('norma-combined');
                 } else {
                     BansManager.stopAuto();
                 }
                 if (tab === 'staffstats') {
                     StaffStatsManager.open();
+                }
+                if (tab === 'staff-combined') {
+                    App._openCombinedSubTab('staff-combined');
+                }
+                if (tab === 'playercheck') {
+                    PlayerCheckManager.open();
+                }
+                if (tab === 'pubchecker') {
+                    PubChecker.open();
+                } else {
+                    PubChecker.close();
+                }
+                if (tab === 'reports') {
+                    ReportsManager.open();
+                } else {
+                    ReportsManager.close();
+                }
+                if (tab === 'servers') {
+                    ServersManager.open();
                 }
             });
         });
@@ -1234,10 +1457,13 @@ const App = {
         TrackedManager.tick(allPlayers);
         StaffManager.tick(allPlayers);
         PaidManager.tick(allPlayers);
-        // Автодобавление новых админов замеченных на серверах
         this._reportSeenAdmins(allPlayers);
         const el = document.getElementById('last-update');
         if (el) el.textContent = new Date().toLocaleTimeString('ru-RU');
+        const steamid = AuthManager.user?.steamid || AuthManager.user?.steam_id;
+        if (steamid) BansManager._checkNew(steamid);
+        // Обновляем вкладку серверов если открыта
+        ServersManager.tick(serversData);
     },
 
     // Отправляем на сервер игроков с is_admin=true которых может не быть в admins.json
@@ -1276,6 +1502,69 @@ const App = {
             }
         } catch {}
     },
+    _showCsgoPlayers: localStorage.getItem('fearsearch_show_csgo_players') !== '0',
+
+    toggleSidebar() {
+        const sidebar = document.querySelector('.sidebar');
+        const showBtn = document.querySelector('.sidebar-show-btn');
+        if (!sidebar) return;
+        const collapsed = sidebar.classList.toggle('collapsed');
+        if (showBtn) showBtn.style.display = collapsed ? 'flex' : 'none';
+        try { localStorage.setItem('fs_sidebar_collapsed', collapsed ? '1' : '0'); } catch {}
+    },
+
+    // Состояние подвкладок
+    _combinedSubTabs: { 'norma-combined': 'bans', 'staff-combined': 'staff' },
+
+    switchSubTab(combined, subtab, btn) {
+        this._combinedSubTabs[combined] = subtab;
+        // Обновляем кнопки
+        document.querySelectorAll(`#tab-${combined} .combined-tab-btn`).forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        this._openCombinedSubTab(combined);
+    },
+
+    _openCombinedSubTab(combined) {
+        const subtab = this._combinedSubTabs[combined] || (combined === 'norma-combined' ? 'bans' : 'staff');
+        const body = document.getElementById(`${combined}-body`);
+        if (!body) return;
+
+        // Переносим контент нужной вкладки в body
+        const source = document.getElementById(`tab-${subtab}`);
+        if (!source) return;
+
+        body.innerHTML = '';
+        Array.from(source.children).forEach(child => {
+            body.appendChild(child.cloneNode(true));
+        });
+
+        // Обновляем бейджи в хедере объединённой вкладки
+        if (combined === 'staff-combined') {
+            const staffBadge = document.getElementById('staff-online-badge2');
+            const paidBadge = document.getElementById('paid-online-badge2');
+            const staffSrc = document.getElementById('staff-online-badge');
+            const paidSrc = document.getElementById('paid-online-badge');
+            if (staffBadge && staffSrc) staffBadge.textContent = staffSrc.textContent;
+            if (paidBadge && paidSrc) paidBadge.textContent = paidSrc.textContent;
+        }
+
+        // Запускаем нужные менеджеры
+        if (subtab === 'bans') {
+            BansManager.startAuto();
+            StaffStatsManager._updateTicketsCard(StaffStatsManager._ticketMonthly);
+        } else if (subtab === 'staffstats') {
+            StaffStatsManager.open();
+        }
+    },
+
+    toggleCsgoPlayers(label) {
+        this._showCsgoPlayers = !this._showCsgoPlayers;
+        try { localStorage.setItem('fearsearch_show_csgo_players', this._showCsgoPlayers ? '1' : '0'); } catch {}
+        const track = label?.querySelector('.toggler-track');
+        if (track) track.classList.toggle('active', this._showCsgoPlayers);
+        this.renderColumns();
+    },
+
     renderColumns() {
         this.renderAllPlayersColumn();
         this.renderUnconfiguredColumn();
@@ -1287,6 +1576,13 @@ const App = {
         container.innerHTML = '';
         let list = showUnconfigured ? allPlayers : allPlayers.filter(p => !p.isUnconfigured);
         list = list.filter(p => !p.isClean);
+        // Фильтр CS:GO игроков
+        if (!this._showCsgoPlayers) {
+            list = list.filter(p => {
+                const addr = `${p.server?.ip}:${p.server?.port}`;
+                return !CSGO_ADDRS.has(addr);
+            });
+        }
         if (list.length === 0) {
             container.innerHTML = `<div class="empty"><span class="empty-emoji">😕</span><p>Нет игроков онлайн</p></div>`;
         } else { list.forEach(p => container.appendChild(createPlayerCard(p))); }
@@ -1316,6 +1612,26 @@ const App = {
             const nickname = card.dataset.nickname || '';
             card.classList.toggle('hidden', !steamid.includes(searchQuery) && !nickname.includes(searchQuery));
         });
+
+        // Если поиск по steamid и ничего не найдено — показываем подсказку
+        if (searchQuery && searchQuery.length >= 5) {
+            const allCards = document.querySelectorAll('.player-card');
+            const visible = [...allCards].filter(c => !c.classList.contains('hidden'));
+            const container = document.getElementById('all-players');
+            const hint = document.getElementById('search-offline-hint');
+            if (visible.length === 0 && container) {
+                if (!hint) {
+                    const div = document.createElement('div');
+                    div.id = 'search-offline-hint';
+                    div.className = 'empty';
+                    div.innerHTML = `<span class="empty-emoji">🔍</span><p>Игрок офлайн или не найден</p>`;
+                    container.appendChild(div);
+                }
+            } else if (hint) hint.remove();
+        } else {
+            const hint = document.getElementById('search-offline-hint');
+            if (hint) hint.remove();
+        }
     },
     updateStats() {
         const el = (id) => document.getElementById(id);
@@ -1382,6 +1698,7 @@ const CsgoManager = {
     // Какие серверы включены (по id)
     enabled: JSON.parse(localStorage.getItem('fearsearch_csgo_enabled') || 'null') || 
              Object.fromEntries(CSGO_SERVERS_CONFIG.map(s => [s.id, true])),
+    showInServers: localStorage.getItem('fearsearch_csgo_show') !== '0',
     data: [],
     timer: null,
 
@@ -1478,26 +1795,44 @@ const BansManager = {
 
     // Запуск автообновления (вызывается при переключении на вкладку Баны)
     startAuto() {
-        if (!AuthManager.isStaff()) return;
         const steamid = AuthManager.user?.steamid || AuthManager.user?.steam_id || AuthManager.user?.steamId;
         if (!steamid) return;
         this._currentSteamid = steamid;
-        // Сразу загружаем
+        // Сразу загружаем при открытии вкладки
         this._fetchAndUpdate(steamid, true);
-        // Потом каждые 5 секунд
-        if (this._autoTimer) clearInterval(this._autoTimer);
-        this._autoTimer = setInterval(() => this._fetchAndUpdate(steamid, false), 5000);
+        // Проверка новых идёт через updateData каждые 5 сек — отдельный таймер не нужен
     },
 
     stopAuto() {
         if (this._autoTimer) { clearInterval(this._autoTimer); this._autoTimer = null; }
     },
 
+    async _checkNew(steamid) {
+        if (this._loading) return;
+        try {
+            const headers = {};
+            if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
+            const res = await fetch(`/api/fear/punishments/check-new?admin_steamid=${encodeURIComponent(steamid)}`, {
+                headers, signal: AbortSignal.timeout(10000)
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.hasNew) {
+                console.log(`[bans] обнаружено ${data.newCount} новых наказаний — обновляем`);
+                this._fetchAndUpdate(steamid, false);
+            }
+        } catch {}
+    },
+
     async _fetchAndUpdate(steamid, firstLoad) {
         if (this._loading) return;
         this._loading = true;
 
-        if (firstLoad) {
+        // Если есть кешированные данные — показываем сразу
+        const cached = this._lastResult[steamid];
+        if (firstLoad && cached?.bans?.length) {
+            this.render(steamid, cached.bans, cached.mutes, true, 0);
+        } else if (firstLoad) {
             document.getElementById('bans-stats').style.display = 'none';
             document.getElementById('bans-months').style.display = 'none';
             document.getElementById('bans-list').innerHTML = `<div class="loader"><div class="loader-ring"></div><span>Загружаю наказания...</span></div>`;
@@ -1523,6 +1858,7 @@ const BansManager = {
             if (firstLoad) {
                 // Первая загрузка — полный рендер
                 this.render(steamid, bans, mutes, data.fromCache, data.newCount || 0);
+                this._loadTickets();
             } else {
                 // Последующие — только обновляем статистику если изменилось
                 const prevTotal = (prev?.bans?.length || 0) + (prev?.mutes?.length || 0);
@@ -1573,9 +1909,10 @@ const BansManager = {
         const knownUnban = all.find(b => b.id === 115993 || String(b.id) === '115993');
         if (knownUnban) console.log('[bans] запись 115993 (разбанен):', JSON.stringify(knownUnban));
 
-        // Считаем по месяцам (все наказания)
+        // Считаем по месяцам (только не снятые)
         const byMonth = {};
         for (const p of all) {
+            if (isRemoved(p)) continue; // снятые не считаем
             const d = new Date(p.created * 1000);
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             byMonth[key] = (byMonth[key] || 0) + 1;
@@ -1586,18 +1923,33 @@ const BansManager = {
         const thisMonth = byMonth[curKey] || 0;
         const loadedAt = new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+        const activeTotal = all.length - removedCount;
+        const activeBans  = bans.filter(b => !isRemoved(b)).length;
+        const activeMutes = mutes.filter(b => !isRemoved(b)).length;
+
+        // Рекорд месяца
+        const recordKey = Object.entries(byMonth).sort((a,b) => b[1]-a[1])[0];
+        const savedRecord = (() => { try { return JSON.parse(localStorage.getItem('fs_norma_record') || 'null'); } catch { return null; } })();
+        if (recordKey && (!savedRecord || recordKey[1] > savedRecord.count)) {
+            const [rYear, rMonth] = recordKey[0].split('-');
+            const rName = new Date(+rYear, +rMonth-1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+            const newRecord = { count: recordKey[1], month: recordKey[0], monthName: rName, name: AuthManager.user?.name || 'Неизвестно' };
+            try { localStorage.setItem('fs_norma_record', JSON.stringify(newRecord)); } catch {}
+        }
+        const record = (() => { try { return JSON.parse(localStorage.getItem('fs_norma_record') || 'null'); } catch { return null; } })();
+
         statsEl.style.display = 'flex';
         statsEl.innerHTML = `
             <div class="bans-stat-card">
-                <div class="bans-stat-val" id="stat-total">${all.length}</div>
+                <div class="bans-stat-val" id="stat-total">${activeTotal}</div>
                 <div class="bans-stat-label" id="stat-total-label">Всего</div>
             </div>
             <div class="bans-stat-card">
-                <div class="bans-stat-val" id="stat-bans">${bans.length}</div>
+                <div class="bans-stat-val" id="stat-bans">${activeBans}</div>
                 <div class="bans-stat-label">Банов</div>
             </div>
             <div class="bans-stat-card">
-                <div class="bans-stat-val" id="stat-mutes">${mutes.length}</div>
+                <div class="bans-stat-val" id="stat-mutes">${activeMutes}</div>
                 <div class="bans-stat-label">Мутов</div>
             </div>
             <div class="bans-stat-card highlight">
@@ -1608,14 +1960,31 @@ const BansManager = {
                 <div class="bans-stat-val" id="stat-removed" style="color:var(--green)">${removedCount}</div>
                 <div class="bans-stat-label">Снятые</div>
             </div>
+            <div class="bans-stat-card" style="border-color:rgba(96,165,250,.3);background:rgba(96,165,250,.06)">
+                <div class="bans-stat-val" id="stat-tickets" style="color:#60a5fa">—</div>
+                <div class="bans-stat-label">Тикетов</div>
+            </div>
             <div class="bans-stat-card">
                 <div class="bans-stat-val">${sortedMonths.length}</div>
                 <div class="bans-stat-label">Активных месяцев</div>
             </div>
             ${newCount > 0 ? `<div class="bans-stat-card new"><div class="bans-stat-val">+${newCount}</div><div class="bans-stat-label">Новых</div></div>` : ''}
-            <div class="bans-stat-info">${fromCache ? '📦 Кеш · ' : ''}Обновлено: <span id="bans-updated-at">${loadedAt}</span> <button class="bans-refresh-btn" onclick="BansManager.forceRefresh()">🔄 Обновить</button></div>
+            <div class="bans-stat-info">${fromCache ? '📦 Кеш · ' : ''}Обновлено: <span id="bans-updated-at">${loadedAt}</span> <button class="bans-refresh-btn" onclick="BansManager.forceRefresh()">🔄 Обновить</button>${OWNERS.has(AuthManager.user?.steamid || AuthManager.user?.steam_id || '') ? ` <button class="bans-refresh-btn" style="background:rgba(168,85,247,.15);border-color:rgba(168,85,247,.3);color:var(--purple);margin-left:4px" onclick="StaffStatsManager._resetTickets()">📥 Загрузить тикеты</button>` : ''}</div>
         `;
 
+        // Восстанавливаем счётчик тикетов из кеша после перерисовки
+        if (StaffStatsManager._ticketMonthly) {
+            StaffStatsManager._updateTicketsCard(StaffStatsManager._ticketMonthly);
+        } else {
+            // Пробуем из localStorage
+            try {
+                const saved = localStorage.getItem('fs_ticket_monthly');
+                if (saved) {
+                    StaffStatsManager._ticketMonthly = JSON.parse(saved);
+                    StaffStatsManager._updateTicketsCard(StaffStatsManager._ticketMonthly);
+                }
+            } catch {}
+        }
         // ── По месяцам ──
         monthsEl.style.display = 'block';
         monthsEl.innerHTML = `<div class="bans-months-title">По месяцам</div><div class="bans-months-grid">` +
@@ -1640,7 +2009,7 @@ const BansManager = {
         const filterWrap = document.createElement('div');
         filterWrap.className = 'bans-filter';
         const options = [
-            { value: '', label: 'Все месяцы', count: all.length },
+            { value: '', label: 'Все месяцы', count: all.filter(b => !isRemoved(b)).length },
             ...sortedMonths.map(([key, count]) => {
                 const [year, month] = key.split('-');
                 const label = new Date(+year, +month - 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
@@ -1648,7 +2017,8 @@ const BansManager = {
             })
         ];
         const curKey2 = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-        const defaultOpt = options.find(o => o.value === curKey2) || options[0];
+        // По умолчанию — "Все месяцы"
+        const defaultOpt = options[0]; // options[0] = "Все месяцы"
         filterWrap.innerHTML = `
             <div class="bans-month-select" id="bans-month-select">
                 <div class="bans-month-selected" onclick="BansManager._toggleDropdown()">
@@ -1732,6 +2102,55 @@ const BansManager = {
         // Фильтруем
         this._currentMonthFilter = value;
         this._applyMonthFilter(steamid, value);
+        // Обновляем счётчик тикетов за выбранный месяц
+        if (StaffStatsManager._ticketMonthly) {
+            const ticketEl = document.getElementById('stat-tickets');
+            if (ticketEl) {
+                if (value) {
+                    ticketEl.textContent = StaffStatsManager._ticketMonthly[value] || 0;
+                } else {
+                    const total = Object.values(StaffStatsManager._ticketMonthly).reduce((s, v) => s + v, 0);
+                    ticketEl.textContent = total;
+                }
+            }
+        }
+    },
+
+    async _loadTickets() {
+        try {
+            const headers = {};
+            if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
+            // Загружаем все страницы истории тикетов
+            let allTickets = [];
+            let page = 1;
+            while (true) {
+                const r = await fetch(`/api/fear/reports/history-all?page=${page}&limit=100`, { headers });
+                if (!r.ok) break;
+                const data = await r.json();
+                const items = Array.isArray(data) ? data : (data.reports || data.data || []);
+                if (!items.length) break;
+                allTickets = allTickets.concat(items);
+                const total = data.total || items.length;
+                if (allTickets.length >= total || items.length < 100) break;
+                page++;
+                if (page > 20) break; // защита
+            }
+            this._tickets = allTickets;
+            this._updateTicketStats();
+        } catch {}
+    },
+
+    _updateTicketStats() {
+        const el = document.getElementById('stat-tickets');
+        if (!el || !this._tickets) return;
+        // Считаем по текущему фильтру месяца
+        const month = this._currentMonthFilter;
+        const filtered = month ? this._tickets.filter(t => {
+            const d = new Date(t.created_at || t.created || 0);
+            const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+            return key === month;
+        }) : this._tickets;
+        el.textContent = filtered.length;
     },
 
     _applyMonthFilter(steamid, month) {
@@ -1746,9 +2165,10 @@ const BansManager = {
             return key === month;
         }) : all;
 
-        const subBans    = subset.filter(b => b.punish_type === 1).length;
-        const subMutes   = subset.filter(b => b.punish_type === 2).length;
+        const subBans    = subset.filter(b => b.punish_type === 1 && b.status !== 2).length;
+        const subMutes   = subset.filter(b => b.punish_type === 2 && b.status !== 2).length;
         const subRemoved = subset.filter(b => b.status === 2).length;
+        const subActive  = subset.length - subRemoved;
         const label = month ? (() => {
             const [y, m] = month.split('-');
             return new Date(+y, +m - 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
@@ -1756,7 +2176,7 @@ const BansManager = {
 
         // Обновляем карточки по id
         const setCard = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-        setCard('stat-total', subset.length);
+        setCard('stat-total', subActive);
         const labelEl2 = document.getElementById('stat-total-label');
         if (labelEl2) labelEl2.textContent = label;
         setCard('stat-bans', subBans);
@@ -1769,7 +2189,7 @@ const BansManager = {
             const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
             const thisMonthCount = all.filter(b => {
                 const d = new Date(b.created * 1000);
-                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === curKey;
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === curKey && b.status !== 2;
             }).length;
             thisMonthEl.textContent = thisMonthCount;
         }
@@ -1777,6 +2197,7 @@ const BansManager = {
         const existing = listEl.querySelectorAll('.ban-card');
         existing.forEach(c => c.remove());
         this._renderBanCards(listEl, all, month);
+        this._updateTicketStats();
     },
 
     filterByMonth(steamid) {
@@ -1853,13 +2274,72 @@ const BansManager = {
     }
 };
 
+// ── MONTH DROPDOWN ───────────────────────────
+class MonthDropdown {
+  constructor(container, onSelect) {
+    this._container = container;
+    this._onSelect = onSelect;
+    this._abortController = null;
+    this._select = container.querySelector('[data-role="month-select"]');
+    this._label = container.querySelector('[data-role="month-label"]');
+    this._dropdown = container.querySelector('[data-role="month-dropdown"]');
+    if (!this._select || !this._dropdown) {
+      console.warn('[MonthDropdown] elements not found in container');
+    }
+  }
+
+  open() {
+    if (!this._select || !this._dropdown) return;
+    this._select.classList.add('open');
+    this._abortController?.abort();
+    this._abortController = new AbortController();
+    document.addEventListener('click', (e) => {
+      if (!this._select.contains(e.target)) this.close();
+    }, { signal: this._abortController.signal });
+  }
+
+  close() {
+    if (!this._select) return;
+    this._select.classList.remove('open');
+    this._abortController?.abort();
+    this._abortController = null;
+  }
+
+  toggle() {
+    if (this._select && this._select.classList.contains('open')) {
+      this.close();
+    } else {
+      this.open();
+    }
+  }
+
+  select(monthKey, label) {
+    if (this._label) this._label.textContent = label;
+    this.close();
+    if (this._onSelect) this._onSelect(monthKey);
+  }
+
+  destroy() {
+    this._abortController?.abort();
+    this._abortController = null;
+  }
+}
+
 // ── STAFF STATS MANAGER ──────────────────────
 const StaffStatsManager = {
-    _data: {},        // steamid -> { bans, mutes }
-    _months: [],      // все доступные месяцы ['2026-03', ...]
-    _selectedMonth: '',  // '' = все время
+    _data: {},
+    _months: [],
+    _selectedMonth: '',
     _loaded: false,
     _loading: false,
+    _dropdown: null,
+    // Загружаем _ticketMonthly из localStorage при старте — не теряем при обновлении
+    _ticketMonthly: (() => {
+        try {
+            const s = localStorage.getItem('fs_ticket_monthly');
+            return s ? JSON.parse(s) : null;
+        } catch { return null; }
+    })(),
 
     // Группы стаффа (без медиа, без STAFF и STADMIN)
     STAFF_GROUPS: new Set(['STMODER', 'MODER', 'MLMODER']),
@@ -1879,10 +2359,25 @@ const StaffStatsManager = {
         // Проверяем доступ
         const sid = AuthManager.user?.steamid || AuthManager.user?.steam_id || '';
         const WHITELIST = new Set(['76561198751025670', '76561199645130988']);
-        if (!WHITELIST.has(sid)) {
+        if (!OWNERS.has(sid)) {
             document.getElementById('staffstats-list').innerHTML =
                 `<div class="empty"><span class="empty-emoji">🔒</span><p>Нет доступа</p></div>`;
             return;
+        }
+        // Вставляем значения рекорда
+        const recCount = document.getElementById('staff-record-count');
+        const recAuthor = document.getElementById('staff-record-author');
+        if (recCount) recCount.textContent = STAFF_RECORD.count;
+        if (recAuthor) recAuthor.textContent = STAFF_RECORD.author;
+        // Инициализируем MonthDropdown — ищем контейнер в активном DOM
+        const container = document.querySelector('#norma-combined-body') ||
+                          document.getElementById('tab-staffstats');
+        if (container) {
+            this._dropdown?.destroy();
+            this._dropdown = new MonthDropdown(container, (monthKey) => {
+                this._selectedMonth = monthKey;
+                this._render();
+            });
         }
         if (this._loaded) { this._render(); return; }
         // Пробуем загрузить из localStorage кеша
@@ -1985,21 +2480,119 @@ const StaffStatsManager = {
         try {
             localStorage.setItem('fs_staffstats_cache', JSON.stringify({ data: this._data, savedAt: Date.now() }));
         } catch {}
+
+        // Загружаем тикеты инкрементально — с кешем
+        await this._loadTicketsIncremental(headers);
+
         this._buildMonths();
         this._buildDropdown();
         this._render();
+    },
+
+    // Кеш тикетов отдельно от основного кеша
+    _TICKETS_CACHE_KEY: 'fs_tickets_cache',
+
+    async _loadTicketsIncremental(headers) {
+        // Показываем кеш мгновенно
+        try {
+            const statsRes = await fetch('/api/fear/reports/norma-stats', { headers, signal: AbortSignal.timeout(5000) });
+            if (statsRes.ok) {
+                const stats = await statsRes.json();
+                if (stats.cached > 0) {
+                    console.log(`[tickets] кеш: ${stats.cached} тикетов`);
+                    this._ticketMonthly = stats.monthly || {};
+                    this._updateTicketsCard(this._ticketMonthly);
+                    this._buildMonths();
+                    this._buildDropdown();
+                    this._render();
+                }
+            }
+        } catch {}
+
+        // Умное обновление — только новые тикеты
+        try {
+            console.log('[tickets] сканирование новых...');
+            const res = await fetch('/api/fear/reports/history-all', { headers, signal: AbortSignal.timeout(15 * 60 * 1000) });
+            if (!res.ok) { console.log(`[tickets] scan failed: ${res.status}`); return; }
+            const data = await res.json();
+            if (data.stats) {
+                this._ticketMonthly = data.stats.monthly || {};
+                this._updateTicketsCard(this._ticketMonthly);
+                console.log(`[tickets] итого: ${data.stats.total_tickets}, новых: ${data.newCount || 0}`);
+            }
+        } catch (e) { console.warn('[tickets] scan error:', e.message); }
+
+        this._buildMonths();
+        this._buildDropdown();
+        this._render();
+    },
+
+    async _resetTickets() {
+        const headers = {};
+        if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
+        UI.showToast('⏳ Загружаем все тикеты...');
+        try {
+            console.log('[tickets] полная загрузка с нуля (reset=1)...');
+            const res = await fetch('/api/fear/reports/history-all?reset=1', { headers, signal: AbortSignal.timeout(15 * 60 * 1000) });
+            if (!res.ok) { UI.showToast(`❌ Ошибка: ${res.status}`, 'error'); return; }
+            const data = await res.json();
+            if (data.stats) {
+                this._ticketMonthly = data.stats.monthly || {};
+                this._updateTicketsCard(this._ticketMonthly);
+                UI.showToast(`✅ Загружено ${data.stats.total_tickets} тикетов`);
+            }
+        } catch (e) { UI.showToast('❌ ' + e.message, 'error'); }
+        this._buildMonths();
+        this._buildDropdown();
+        this._render();
+    },
+
+    _applyTickets(allTickets) {
+        // Группируем по admin_steamid для совместимости
+        const ticketsByAdmin = {};
+        for (const t of allTickets) {
+            const sid = t.admin_steamid || t.closed_by || t.moderator_steamid || '';
+            if (!sid) continue;
+            if (!ticketsByAdmin[sid]) ticketsByAdmin[sid] = [];
+            ticketsByAdmin[sid].push(t);
+        }
+        for (const sid of Object.keys(this._data)) {
+            this._data[sid].tickets = ticketsByAdmin[sid] || [];
+        }
+        for (const [sid, tickets] of Object.entries(ticketsByAdmin)) {
+            if (!this._data[sid]) this._data[sid] = { bans: [], mutes: [], tickets };
+            else this._data[sid].tickets = tickets;
+        }
+    },
+
+    // Обновляет карточку "Тикетов" в BansManager (вкладка Норма)
+    _updateTicketsCard(monthly) {
+        if (!monthly) return;
+        // Сохраняем в localStorage чтобы не терять при обновлении
+        try { localStorage.setItem('fs_ticket_monthly', JSON.stringify(monthly)); } catch {}
+        const el = document.getElementById('stat-tickets');
+        if (!el) return;
+        if (this._selectedMonth) {
+            el.textContent = monthly[this._selectedMonth] || 0;
+        } else {
+            const total = Object.values(monthly).reduce((s, v) => s + v, 0);
+            el.textContent = total;
+        }
     },
 
     _buildMonths() {
         const monthSet = new Set();
         for (const { bans, mutes } of Object.values(this._data)) {
             for (const p of [...bans, ...mutes]) {
-                const d = new Date(p.created * 1000);
-                monthSet.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+                const d = new Date((p.created || 0) * 1000);
+                if (d.getFullYear() > 2000) monthSet.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
             }
         }
+        // Добавляем месяцы из серверного кеша тикетов
+        if (this._ticketMonthly) {
+            for (const k of Object.keys(this._ticketMonthly)) monthSet.add(k);
+        }
         this._months = [...monthSet].sort((a,b) => b.localeCompare(a));
-        // Дефолт — текущий месяц если есть
         const now = new Date();
         const curKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
         this._selectedMonth = this._months.includes(curKey) ? curKey : '';
@@ -2007,15 +2600,25 @@ const StaffStatsManager = {
 
     _buildDropdown() {
         const staff = this.getStaffList();
-        const dropdown = document.getElementById('ss-month-dropdown');
-        const label    = document.getElementById('ss-month-label');
+        // Scoped поиск — ищем в активном контейнере вкладки
+        // norma-combined-body имеет приоритет (там клонированный контент)
+        const container = document.querySelector('#norma-combined-body') ||
+                          document.getElementById('tab-staffstats') ||
+                          document.querySelector('#tab-norma-combined');
+        const dropdown = container?.querySelector('[data-role="month-dropdown"]') ||
+                         document.querySelector('#tab-staffstats [data-role="month-dropdown"]') ||
+                         document.querySelector('[data-role="month-dropdown"]');
+        const label    = container?.querySelector('[data-role="month-label"]') ||
+                         document.querySelector('#tab-staffstats [data-role="month-label"]') ||
+                         document.querySelector('[data-role="month-label"]');
         if (!dropdown) return;
 
-        // Считаем кол-во наказаний за каждый месяц (по всему стаффу)
+        // Считаем ВСЕ наказания за каждый месяц (включая снятые — как на сайте)
         const monthTotals = {};
         for (const { bans, mutes } of Object.values(this._data)) {
             for (const p of [...bans, ...mutes]) {
-                const d = new Date(p.created * 1000);
+                const d = new Date((p.created || 0) * 1000);
+                if (d.getFullYear() < 2000) continue;
                 const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
                 monthTotals[k] = (monthTotals[k] || 0) + 1;
             }
@@ -2042,19 +2645,118 @@ const StaffStatsManager = {
         if (label) label.innerHTML = `${cur.label} <span style="color:rgba(168,85,247,.8)">(${cur.count})</span>`;
     },
 
-    toggleDropdown() {
-        document.getElementById('ss-month-select')?.classList.toggle('open');
+    toggleDropdown(triggerEl) {
+        if (this._dropdown) {
+            this._dropdown.toggle();
+            return;
+        }
+        // Fallback — scoped поиск если _dropdown ещё не инициализирован
+        const select = triggerEl?.closest('[data-role="month-select"]') ||
+                       document.querySelector('#tab-staffstats [data-role="month-select"]') ||
+                       document.querySelector('[data-role="month-select"]');
+        if (!select) return;
+        const wasOpen = select.classList.contains('open');
+        document.querySelectorAll('[data-role="month-select"].open').forEach(el => el.classList.remove('open'));
+        if (!wasOpen) {
+            select.classList.add('open');
+            const handler = (e) => {
+                if (!select.contains(e.target)) {
+                    select.classList.remove('open');
+                    document.removeEventListener('click', handler);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', handler), 0);
+        }
+    },
+
+    openCheck() {
+        const modal = document.getElementById('player-check-modal');
+        if (modal) modal.style.display = 'flex';
+        setTimeout(() => document.getElementById('player-check-input')?.focus(), 100);
+    },
+
+    closeCheck() {
+        const modal = document.getElementById('player-check-modal');
+        if (modal) modal.style.display = 'none';
+    },
+
+    async checkPlayer() {
+        const input = document.getElementById('player-check-input');
+        const result = document.getElementById('player-check-result');
+        const steamid = input?.value?.trim();
+        if (!steamid) return;
+        result.innerHTML = `<div style="text-align:center;padding:20px;color:var(--t3)">⏳ Загружаем...</div>`;
+        try {
+            const headers = {};
+            if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
+            const res = await fetch(`/api/fear/player-check/${encodeURIComponent(steamid)}`, { headers, signal: AbortSignal.timeout(15000) });
+            if (!res.ok) { result.innerHTML = `<div style="color:#ff5050">❌ Ошибка ${res.status}</div>`; return; }
+            const d = await res.json();
+            const kd = d.kd || (d.kills && d.deaths ? (d.kills/Math.max(d.deaths,1)).toFixed(2) : '—');
+            const hs = d.hs ? `${d.hs}%` : '—';
+            const playtime = d.playtime ? `${Math.round(d.playtime/60)}ч` : '—';
+            const lastSeen = d.last_seen ? new Date(d.last_seen).toLocaleDateString('ru-RU') : (d.last_logoff ? new Date(d.last_logoff).toLocaleDateString('ru-RU') : '—');
+            const reg = d.timecreated ? new Date(d.timecreated).toLocaleDateString('ru-RU') : '—';
+            const name = d.fear_name || d.steam_name || steamid;
+            const avatar = d.fear_avatar || d.steam_avatar || '';
+            const group = d.fear_group ? `<span style="background:rgba(168,85,247,.2);color:var(--purple);padding:2px 8px;border-radius:4px;font-size:11px">${escapeHtml(d.fear_group)}</span>` : '';
+            const online = d.steam_status > 0 ? `<span style="color:var(--green)">● В сети${d.steam_game ? ' · ' + escapeHtml(d.steam_game) : ''}</span>` : `<span style="color:var(--t3)">● Офлайн</span>`;
+            const vacBanned = d.vac?.VACBanned ? `<span style="color:#ff5050;font-weight:700">⚠ VAC БАН (${d.vac.NumberOfVACBans})</span>` : '';
+            result.innerHTML = `
+                <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;padding:12px;background:var(--card);border-radius:10px">
+                    ${avatar ? `<img src="${escapeHtml(avatar)}" style="width:48px;height:48px;border-radius:50%">` : '<div style="width:48px;height:48px;border-radius:50%;background:var(--border)">👤</div>'}
+                    <div>
+                        <div style="font-size:16px;font-weight:700">${escapeHtml(name)} ${group}</div>
+                        <div style="font-size:12px;color:var(--t3);margin:2px 0">${escapeHtml(steamid)}</div>
+                        <div style="font-size:12px">${online} ${vacBanned}</div>
+                    </div>
+                    <div style="margin-left:auto;display:flex;gap:8px">
+                        <button onclick="App.openSteamProfile('${escapeHtml(steamid)}')" style="padding:6px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--t2);cursor:pointer;font-size:12px">Steam</button>
+                        <button onclick="App.openFearProfile('${escapeHtml(steamid)}')" style="padding:6px 12px;background:rgba(168,85,247,.15);border:1px solid rgba(168,85,247,.3);border-radius:6px;color:var(--purple);cursor:pointer;font-size:12px">Fear</button>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                    ${[
+                        ['K/D', kd, d.kills && d.deaths ? `(${d.kills}/${d.deaths})` : ''],
+                        ['HS%', hs, ''],
+                        ['Наиграно', playtime, ''],
+                        ['Последний вход', lastSeen, ''],
+                        ['Регистрация', reg, ''],
+                        ['Steam Lvl', d.steam_level ?? '—', ''],
+                        ['Друзья', d.friends_count ?? '—', ''],
+                        ['Профиль', d.profile_state === 3 ? '<span style="color:var(--green)">Публичный</span>' : '<span style="color:#ff5050">Закрытый</span>', ''],
+                    ].map(([label, val, sub]) => `
+                        <div style="padding:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;text-align:center">
+                            <div style="font-size:11px;color:var(--t3);margin-bottom:4px">${label}</div>
+                            <div style="font-size:15px;font-weight:700">${val}</div>
+                            ${sub ? `<div style="font-size:10px;color:var(--t3)">${sub}</div>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        } catch (e) { result.innerHTML = `<div style="color:#ff5050">❌ ${e.message}</div>`; }
     },
 
     _selectMonth(value, count, el) {
         document.querySelectorAll('.ss-month-option').forEach(o => o.classList.remove('active'));
         el.classList.add('active');
-        const label = document.getElementById('ss-month-label');
+        // Scoped поиск label — ищем в активном контейнере
+        const container = document.querySelector('#norma-combined-body') ||
+                          document.getElementById('tab-staffstats');
+        const label = container?.querySelector('[data-role="month-label"]') ||
+                      document.querySelector('[data-role="month-label"]');
         if (label) {
             const name = el.querySelector('span:first-child').textContent;
             label.innerHTML = `${name} <span style="color:rgba(168,85,247,.8)">(${count})</span>`;
         }
-        document.getElementById('ss-month-select')?.classList.remove('open');
+        // Закрываем через _dropdown если есть, иначе scoped поиск
+        if (this._dropdown) {
+            this._dropdown.close();
+        } else {
+            const select = container?.querySelector('[data-role="month-select"]') ||
+                           document.querySelector('[data-role="month-select"]');
+            select?.classList.remove('open');
+        }
         this._selectedMonth = value;
         this._render();
     },
@@ -2062,18 +2764,29 @@ const StaffStatsManager = {
     _countFor(steamid) {
         const d = this._data[steamid];
         if (!d) return { bans: 0, mutes: 0, removed: 0, total: 0 };
-        const filter = p => {
+
+        const filterByMonth = (dateMs) => {
             if (!this._selectedMonth) return true;
-            const k = new Date(p.created * 1000);
-            return `${k.getFullYear()}-${String(k.getMonth()+1).padStart(2,'0')}` === this._selectedMonth;
+            const [y, m] = this._selectedMonth.split('-').map(Number);
+            const start = new Date(y, m - 1, 1, 0, 0, 0).getTime();
+            const end   = new Date(y, m, 0, 23, 59, 59, 999).getTime();
+            return dateMs >= start && dateMs <= end;
         };
-        const allBans  = d.bans.filter(filter);
-        const allMutes = d.mutes.filter(filter);
-        const bans   = allBans.length;
-        const mutes  = allMutes.length;
-        // status === 2 — снят вручную (Разбанен/Размучен)
+
+        const allBans  = d.bans.filter(p => filterByMonth((p.created || 0) * 1000));
+        const allMutes = d.mutes.filter(p => filterByMonth((p.created || 0) * 1000));
         const isRemoved = (p) => p.status === 2;
         const removed = [...allBans, ...allMutes].filter(isRemoved).length;
+
+        // С апреля 2026 снятые вычитаются из общего счёта
+        const DEDUCT_FROM = new Date('2026-04-01').getTime();
+        const periodStart = this._selectedMonth
+            ? new Date(this._selectedMonth.split('-')[0], this._selectedMonth.split('-')[1] - 1, 1).getTime()
+            : 0;
+        const deductRemoved = periodStart >= DEDUCT_FROM || (!this._selectedMonth && true);
+
+        const bans  = deductRemoved ? allBans.filter(p => !isRemoved(p)).length  : allBans.length;
+        const mutes = deductRemoved ? allMutes.filter(p => !isRemoved(p)).length : allMutes.length;
         return { bans, mutes, removed, total: bans + mutes };
     },
 
@@ -2098,6 +2811,16 @@ const StaffStatsManager = {
 
         const maxTotal = rows[0]?.total || 1;
 
+        // Рекорд среди стаффа за выбранный период
+        const topRow = rows[0];
+        const recordKey = 'fs_staff_record_' + (this._selectedMonth || 'all');
+        const savedStaffRecord = (() => { try { return JSON.parse(localStorage.getItem(recordKey) || 'null'); } catch { return null; } })();
+        if (topRow && topRow.total > 0 && (!savedStaffRecord || topRow.total > savedStaffRecord.count)) {
+            const newRec = { count: topRow.total, name: topRow.name, steamid: topRow.steamid, month: this._selectedMonth || 'all' };
+            try { localStorage.setItem(recordKey, JSON.stringify(newRec)); } catch {}
+        }
+        const staffRecord = (() => { try { return JSON.parse(localStorage.getItem(recordKey) || 'null'); } catch { return null; } })();
+
         let html = `<div class="ss-row ss-row-header">
             <span>#</span><span></span><span>Стафф</span>
             <span style="text-align:center">Баны</span>
@@ -2105,6 +2828,9 @@ const StaffStatsManager = {
             <span style="text-align:center">Снятые</span>
             <span style="text-align:center">Всего</span>
         </div>`;
+        if (staffRecord) {
+            html = `<div class="bans-stat-record" style="margin-bottom:8px">🏆 Рекорд стаффа: <b>${staffRecord.count}</b> нак. · ${escapeHtml(staffRecord.name)}</div>` + html;
+        }
 
         rows.forEach((m, i) => {
             const rank = i + 1;
@@ -2114,7 +2840,7 @@ const StaffStatsManager = {
                 : `<div class="ss-avatar-placeholder ss-avatar-clickable" onclick="App.openFearProfile('${escapeHtml(m.steamid)}')" title="Открыть профиль на Fear">👤</div>`;
             const barPct = maxTotal > 0 ? Math.round(m.total / maxTotal * 100) : 0;
 
-            html += `<div class="ss-row">
+            html += `<div class="ss-row" style="--bar-pct:${barPct}%">
                 <span class="ss-rank ${rankClass}">${rank}</span>
                 ${avatar}
                 <div class="ss-info">
@@ -2125,17 +2851,12 @@ const StaffStatsManager = {
                 <div class="ss-stat"><span class="ss-stat-val mutes">${m.mutes}</span><span class="ss-stat-label">Муты</span></div>
                 <div class="ss-stat"><span class="ss-stat-val" style="color:var(--green)">${m.removed}</span><span class="ss-stat-label">Снятые</span></div>
                 <div class="ss-stat"><span class="ss-stat-val total">${m.total}</span><span class="ss-stat-label">Всего</span></div>
-                <div class="ss-bar-wrap"><div class="ss-bar" style="width:${barPct}%"></div></div>
             </div>`;
         });
 
         listEl.innerHTML = html;
 
-        // Закрывать дропдаун при клике вне
-        document.addEventListener('click', (e) => {
-            const sel = document.getElementById('ss-month-select');
-            if (sel && !sel.contains(e.target)) sel.classList.remove('open');
-        });
+        // Закрывать дропдаун при клике вне — управляется через MonthDropdown._abortController
     },
 };
 
@@ -2310,6 +3031,49 @@ const ParticlesSystem = {
     setSizeMultiplier(v) { this.sizeMultiplier = v; this.spawn(); },
 };
 
+// ── EASTER EGG ───────────────────────────────
+const EasterEgg = {
+    _LS_KEY: 'easter-egg-enabled',
+
+    init() {
+        const enabled = localStorage.getItem(this._LS_KEY) === 'true';
+        const checkbox = document.getElementById('easter-egg-enabled');
+        const btn = document.getElementById('easter-egg-btn');
+        if (checkbox) checkbox.checked = enabled;
+        if (btn) btn.disabled = !enabled;
+    },
+
+    setEnabled(val) {
+        localStorage.setItem(this._LS_KEY, String(val));
+        const btn = document.getElementById('easter-egg-btn');
+        if (btn) btn.disabled = !val;
+    },
+
+    trigger() {
+        if (localStorage.getItem(this._LS_KEY) !== 'true') return;
+        this._showModal();
+    },
+
+    _showModal() {
+        const existing = document.querySelector('.easter-egg-modal');
+        if (existing) { existing.remove(); return; }
+        const modal = document.createElement('div');
+        modal.className = 'easter-egg-modal';
+        modal.innerHTML = `
+            <div class="easter-egg-inner">
+                <div class="easter-egg-emoji">🥛</div>
+                <div class="easter-egg-title">молочныйРейдизан</div>
+                <div class="easter-egg-text">
+                    Рекорд стаффа: <strong>${STAFF_RECORD.count} наказаний</strong><br>
+                    Легенда fearproject.ru
+                </div>
+                <button onclick="this.closest('.easter-egg-modal').remove()">Закрыть</button>
+            </div>`;
+        document.body.appendChild(modal);
+        requestAnimationFrame(() => modal.classList.add('visible'));
+    }
+};
+
 // ── SETTINGS PANEL ───────────────────────────
 const SettingsPanel = {
     _open: false,
@@ -2397,18 +3161,26 @@ const SettingsPanel = {
         el.style.backgroundImage = `url('${url}')`;
         this._applyGifStyle();
         localStorage.setItem('fs_gif_url', url);
+        // Убираем сохранённый файл с диска если теперь URL
+        if (window.electronAPI?.removeBgMedia) window.electronAPI.removeBgMedia();
     },
 
     loadFromFile(input) {
         const file = input.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             const el = document.getElementById('bg-gif');
             if (!el) return;
             el.style.backgroundImage = `url('${e.target.result}')`;
             this._applyGifStyle();
-            localStorage.setItem('fs_gif_url', e.target.result);
+            // Сохраняем через electronAPI (обходим лимит localStorage)
+            if (window.electronAPI?.saveBgMedia) {
+                await window.electronAPI.saveBgMedia(e.target.result);
+                localStorage.setItem('fs_gif_url', '__file__');
+            } else {
+                localStorage.setItem('fs_gif_url', e.target.result);
+            }
             const inp = document.getElementById('gif-url-input');
             if (inp) inp.value = '(файл с диска)';
         };
@@ -2419,6 +3191,7 @@ const SettingsPanel = {
         const el = document.getElementById('bg-gif');
         if (el) { el.style.backgroundImage = ''; el.style.cssText = ''; }
         localStorage.removeItem('fs_gif_url');
+        if (window.electronAPI?.removeBgMedia) window.electronAPI.removeBgMedia();
         const inp = document.getElementById('gif-url-input');
         if (inp) inp.value = '';
     },
@@ -2502,7 +3275,17 @@ const SettingsPanel = {
 
         // Гифка
         const gifUrl = localStorage.getItem('fs_gif_url');
-        if (gifUrl && gifUrl !== '(файл с диска)') {
+        if (gifUrl === '__file__' && window.electronAPI?.loadBgMedia) {
+            // Файл с диска — загружаем через electronAPI
+            window.electronAPI.loadBgMedia().then(data => {
+                if (!data) return;
+                const el = document.getElementById('bg-gif');
+                if (el) el.style.backgroundImage = `url('${data}')`;
+                const inp = document.getElementById('gif-url-input');
+                if (inp) inp.value = '(файл с диска)';
+                this._applyGifStyle();
+            });
+        } else if (gifUrl && gifUrl !== '(файл с диска)') {
             const inp = document.getElementById('gif-url-input');
             if (inp) inp.value = gifUrl;
             const el = document.getElementById('bg-gif');
@@ -2542,17 +3325,1656 @@ const Sidebar = {
     },
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    App.init();
+// ── CHECKER MANAGER ──────────────────────────
+const CheckerManager = {
+    _accounts: [], // { login, steamid }
+    _results: {},
+
+    init() {
+        const input = document.getElementById('checker-file-input');
+        if (input) input.addEventListener('change', (e) => this.loadFile(e.target.files[0]));
+    },
+
+    loadFile(file) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target.result;
+            this._accounts = this._parseVdf(text);
+            if (this._accounts.length === 0) {
+                UI.showToast('❌ Не найдено аккаунтов в файле', 'error');
+                return;
+            }
+            UI.showToast(`✅ Загружено ${this._accounts.length} аккаунтов`);
+            this._results = {};
+            this._renderInitial();
+            this._runCheck();
+        };
+        reader.readAsText(file, 'utf-8');
+    },
+
+    _parseVdf(text) {
+        const accounts = [];
+        const seen = new Set();
+        // Ищем паттерн: "login" { "SteamID" "76561..." }
+        const blockRe = /"([^"]+)"\s*\{[^}]*"SteamID"\s+"(7656\d{13})"[^}]*\}/gi;
+        let m;
+        while ((m = blockRe.exec(text)) !== null) {
+            if (!seen.has(m[2])) {
+                seen.add(m[2]);
+                accounts.push({ login: m[1], steamid: m[2] });
+            }
+        }
+        // Fallback — просто ищем все SteamID64
+        if (accounts.length === 0) {
+            const idRe = /7656\d{13}/g;
+            const ids = [...new Set(text.match(idRe) || [])];
+            ids.forEach(id => accounts.push({ login: '', steamid: id }));
+        }
+        return accounts;
+    },
+
+    checkManual() {
+        const input = document.getElementById('checker-manual-input');
+        const val = input?.value.trim();
+        if (!val) return;
+        // Поддерживаем несколько ID через запятую/пробел/перенос
+        const ids = val.split(/[\s,;\n]+/).filter(v => /^7656\d{13}$/.test(v));
+        if (ids.length === 0) { UI.showToast('❌ Введи корректный SteamID64', 'error'); return; }
+        this._accounts = ids.map(id => ({ login: '', steamid: id }));
+        this._results = {};
+        this._renderInitial();
+        this._runCheck();
+        if (input) input.value = '';
+    },
+
+    clear() {
+        this._accounts = [];
+        this._results = {};
+        document.getElementById('checker-list').innerHTML = `<div class="empty"><span class="empty-emoji">🔍</span><p>Загрузи config.vdf или введи SteamID</p></div>`;
+        document.getElementById('checker-stats-row').style.display = 'none';
+        document.getElementById('checker-progress').style.display = 'none';
+    },
+
+    _renderInitial() {
+        const list = document.getElementById('checker-list');
+        list.innerHTML = '';
+        for (const acc of this._accounts) {
+            list.appendChild(this._makeCard(acc, null));
+        }
+        document.getElementById('checker-stats-row').style.display = 'flex';
+        this._updateStats();
+    },
+
+    async _runCheck() {
+        const accounts = this._accounts;
+        const total = accounts.length;
+        const progressWrap = document.getElementById('checker-progress');
+        const progressFill = document.getElementById('checker-progress-fill');
+        const progressText = document.getElementById('checker-progress-text');
+
+        progressWrap.style.display = 'flex';
+        progressFill.style.width = '0%';
+        progressText.textContent = `Проверяем 0 / ${total}...`;
+
+        const checkOne = async (acc) => {
+            try {
+                const res = await fetch('/api/checker/check-one', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ steamid: acc.steamid, token: AuthManager.token })
+                });
+                if (res.ok) return await res.json();
+            } catch {}
+            return null;
+        };
+
+        // Первый проход — все аккаунты
+        for (let i = 0; i < accounts.length; i++) {
+            const acc = accounts[i];
+            const info = await checkOne(acc);
+            if (info) {
+                this._results[acc.steamid] = info;
+                this._updateCard(acc.steamid, info);
+            }
+            const pct = Math.round((i + 1) / total * 100 * 0.7);
+            progressFill.style.width = pct + '%';
+            progressText.textContent = `Проверяем ${i + 1} / ${total}...`;
+            this._updateStats();
+            await new Promise(r => setTimeout(r, 120));
+        }
+
+        // Повторные проходы (до 9 раз) — только для тех у кого нет бана и fearRegistered не false
+        // Если уже забанен — не перепроверяем
+        for (let pass = 2; pass <= 10; pass++) {
+            const needRecheck = accounts.filter(a => {
+                const r = this._results[a.steamid];
+                if (!r) return true; // нет данных
+                const hasFearBan = r.fearBans?.some(b => b.active !== false);
+                if (hasFearBan) return false; // уже забанен на Fear — не перепроверяем
+                if (r.fearRegistered === null) return true; // неизвестно — перепроверяем
+                return false; // чистый или незарег — не перепроверяем
+            });
+
+            if (needRecheck.length === 0) break;
+
+            progressText.textContent = `Проход ${pass}/10: перепроверяем ${needRecheck.length} аккаунтов...`;
+            await new Promise(r => setTimeout(r, 300));
+
+            for (let i = 0; i < needRecheck.length; i++) {
+                const acc = needRecheck[i];
+                const info = await checkOne(acc);
+                if (info) {
+                    this._results[acc.steamid] = info;
+                    this._updateCard(acc.steamid, info);
+                }
+                const pct = 70 + Math.round((pass - 2) / 8 * 25) + Math.round((i + 1) / needRecheck.length * 3);
+                progressFill.style.width = Math.min(pct, 99) + '%';
+                this._updateStats();
+                await new Promise(r => setTimeout(r, 150));
+            }
+        }
+
+        progressFill.style.width = '100%';
+        progressText.textContent = `✅ Готово! Проверено ${total} аккаунтов`;
+        setTimeout(() => { progressWrap.style.display = 'none'; }, 3000);
+        this._updateStats();
+    },
+
+    _makeCard(acc, info) {
+        const card = document.createElement('div');
+        card.className = 'checker-card status-loading';
+        card.id = `checker-card-${acc.steamid}`;
+
+        const status = info ? this._getStatus(info) : 'loading';
+        card.className = `checker-card status-${status}`;
+
+        const name = info?.name || acc.login || acc.steamid;
+        const avatar = info?.avatar || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg';
+        const statusLabel = { loading: '⏳ Проверяем...', clean: '✅ Чистый', banned: '🔨 Забанен', noreg: '❓ Не зарег.' }[status];
+        const statusClass = status;
+
+        const bansHtml = info ? this._renderBans(info) : '';
+        const fearBansHtml = info?.fearBans?.length ? this._renderFearBans(info.fearBans) : '';
+        const fearHtml = info ? `<span class="checker-fear-reg ${info.fearRegistered === true ? 'yes' : info.fearRegistered === false ? 'no' : 'unknown'}">${info.fearRegistered === true ? '👻 Fear: зарег.' : info.fearRegistered === false ? '👻 Fear: нет' : '👻 Fear: ?'}</span>` : '';
+
+        card.innerHTML = `
+            <img src="${escapeHtml(avatar)}" class="checker-card-avatar"
+                 onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
+            <div class="checker-card-info">
+                <div class="checker-card-name">${escapeHtml(name)}</div>
+                ${acc.login ? `<div class="checker-card-login">🔑 ${escapeHtml(acc.login)}</div>` : ''}
+                <div class="checker-card-steamid" onclick="App.copyToClipboard('${escapeHtml(acc.steamid)}')">${escapeHtml(acc.steamid)}</div>
+                ${bansHtml}
+                ${fearBansHtml}
+            </div>
+            <div class="checker-card-status">
+                <span class="checker-status-pill ${statusClass}">${statusLabel}</span>
+                ${fearHtml}
+                <div class="checker-card-btns">
+                    <button class="checker-btn-sm steam" onclick="App.openSteamProfile('${escapeHtml(acc.steamid)}')">Steam</button>
+                    <button class="checker-btn-sm fear" onclick="App.openFearProfile('${escapeHtml(acc.steamid)}')">Fear</button>
+                </div>
+            </div>
+        `;
+        return card;
+    },
+
+    _updateCard(sid, info) {
+        const acc = this._accounts.find(a => a.steamid === sid) || { login: '', steamid: sid };
+        const card = document.getElementById(`checker-card-${sid}`);
+        if (!card) return;
+        const newCard = this._makeCard(acc, info);
+        card.replaceWith(newCard);
+    },
+
+    _renderBans(info) {
+        const items = [];
+        if (info.vacBanned && info.numberOfVACBans > 0) {
+            items.push(`<div class="checker-ban-item vac">🔴 VAC бан × ${info.numberOfVACBans} · ${info.daysSinceLastBan} дней назад</div>`);
+        }
+        if (info.numberOfGameBans > 0) {
+            items.push(`<div class="checker-ban-item game">🟠 Game ban × ${info.numberOfGameBans}</div>`);
+        }
+        if (info.communityBanned) {
+            items.push(`<div class="checker-ban-item comm">⚫ Community ban</div>`);
+        }
+        if (info.economyBan && info.economyBan !== 'none') {
+            items.push(`<div class="checker-ban-item comm">💸 Trade ban: ${info.economyBan}</div>`);
+        }
+        return items.length ? `<div class="checker-card-bans">${items.join('')}</div>` : '';
+    },
+
+    _renderFearBans(fearBans) {
+        if (!fearBans?.length) return '';
+        const items = fearBans.map(b => {
+            const reason  = escapeHtml(b.reason || '—');
+            const expires = b.permanent
+                ? 'навсегда'
+                : b.expires
+                    ? `до ${new Date(b.expires).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}`
+                    : 'навсегда';
+            return `<div class="checker-ban-item fear-ban active">
+                🚫 Fear: ${reason} · ${expires}
+            </div>`;
+        });
+        return `<div class="checker-card-bans">${items.join('')}</div>`;
+    },
+
+    _getStatus(info) {
+        if (info.fearBans?.some(b => b.active !== false)) return 'banned';
+        if (info.fearRegistered === false) return 'noreg';
+        return 'clean';
+    },
+
+    _updateStats() {
+        const results = Object.values(this._results);
+        const banned = results.filter(r =>
+            r.fearBans?.some(b => b.active !== false)
+        ).length;
+        const noreg  = results.filter(r => r.fearRegistered === false).length;
+        const clean  = results.filter(r =>
+            !r.fearBans?.some(b => b.active !== false) &&
+            r.fearRegistered !== false
+        ).length;
+        document.getElementById('checker-stat-banned').textContent = banned;
+        document.getElementById('checker-stat-noreg').textContent  = noreg;
+        document.getElementById('checker-stat-clean').textContent  = clean;
+        document.getElementById('checker-stat-total').textContent  = this._accounts.length;
+    },
+};
+
+// ── PUB CHECKER ──────────────────────────────
+const PubChecker = {
+    _results: {},      // steamid -> { banned, expires, reason, name, avatar, source }
+    _timer: null,
+    _running: false,
+    _sources: new Set(['yooma']),
+
+    open() {
+        const sid = AuthManager.user?.steamid || AuthManager.user?.steam_id || '';
+        if (!OWNERS.has(sid)) {
+            document.getElementById('pubchecker-list').innerHTML =
+                `<div class="empty"><span class="empty-emoji">🔒</span><p>Нет доступа</p></div>`;
+            return;
+        }
+        if (!this._timer) this._startTimer();
+        this._run();
+    },
+
+    close() {
+        if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    },
+
+    _startTimer() {
+        this._timer = setInterval(() => this._run(), 5 * 60 * 1000);
+    },
+
+    toggleSource(src, btn) {
+        if (this._sources.has(src)) {
+            if (this._sources.size === 1) return; // минимум один
+            this._sources.delete(src);
+            btn.classList.remove('active');
+        } else {
+            this._sources.add(src);
+            btn.classList.add('active');
+        }
+        this._run();
+    },
+
+    refresh() { this._run(); },
+
+    async refreshCache() {
+        const text = document.getElementById('pubchecker-progress-text');
+        const prog = document.getElementById('pubchecker-progress');
+        if (prog) prog.style.display = 'flex';
+        if (text) text.textContent = '🔃 Обновляем кеш yooma...';
+        try {
+            await fetch('/api/pubcheck/yooma/refresh', { method: 'POST' });
+            if (text) text.textContent = '⏳ Сканирование запущено (~2-3 мин)';
+            setTimeout(() => {
+                if (prog) prog.style.display = 'none';
+                this._run();
+            }, 5000);
+        } catch (e) {
+            if (text) text.textContent = '❌ ' + e.message;
+        }
+    },
+
+    // Проверяем игроков через yooma WS — get_profile для каждого
+    async _yoomaCheckBrowser(steamids) {
+        const results = {};
+        const nowSec = Math.floor(Date.now() / 1000);
+
+        return new Promise((resolve) => {
+            const pending = new Set(steamids);
+
+            const finish = () => {
+                try { ws?.close(); } catch {}
+                resolve(results);
+            };
+
+            const timer = setTimeout(() => {
+                console.log(`[yooma] timeout, got ${Object.keys(results).length}/${steamids.length}`);
+                finish();
+            }, 30000);
+
+            let ws;
+            try {
+                ws = new WebSocket('wss://yooma.su/api');
+            } catch (e) {
+                clearTimeout(timer);
+                resolve(results);
+                return;
+            }
+
+            ws.onopen = () => {
+                console.log(`[yooma] connected, sending ${steamids.length} get_profile requests`);
+                for (const sid of steamids) {
+                    ws.send(JSON.stringify({ type: 'get_profile', steam_id: sid }));
+                }
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'get_profile' && msg.profile) {
+                        const sid = String(msg.profile.steam_id || '');
+                        if (!pending.has(sid)) return;
+                        pending.delete(sid);
+
+                        // ban существует → забанен, ban null/отсутствует → чистый
+                        const banObj = msg.profile.ban || null;
+                        const banExpires = banObj?.expires ?? null;
+                        // Активный бан: есть объект ban И (expires=0 или expires > now)
+                        const banned = !!(banObj && (banExpires === 0 || banExpires === null || banExpires > nowSec));
+
+                        results[sid] = {
+                            steamid: sid,
+                            banned,
+                            expires: banExpires || null,
+                            reason: this._shortReason(null), // reason в get_profile не приходит
+                            reasonFull: '—',
+                            name: msg.profile.display_name || null,
+                            avatar: msg.profile.avatar_hash
+                                ? `https://avatars.akamai.steamstatic.com/${msg.profile.avatar_hash}_medium.jpg`
+                                : null,
+                            source: 'yooma',
+                        };
+
+                        if (pending.size === 0) { clearTimeout(timer); finish(); }
+                    }
+                } catch {}
+            };
+
+            ws.onerror = (e) => { console.log('[yooma] WS error:', e.type); clearTimeout(timer); finish(); };
+            ws.onclose = () => { clearTimeout(timer); finish(); };
+        });
+    },
+
+    _shortReason(reason) {
+        if (!reason) return '—';
+        const r = reason.toLowerCase();
+        if (r.includes('haron') || r.includes('anti-cheat') || r.includes('античит')) return 'AC';
+        if (r.includes('отказ') || r.includes('проверк')) return 'Отказ';
+        if (r.includes('обход')) return 'Обход';
+        if (r.includes('чит') || r.includes('hack') || r.includes('cheat')) return 'Читы';
+        return reason.slice(0, 30);
+    },
+
+    async _run() {
+        if (this._running) return;
+        this._running = true;
+
+        const steamids = allPlayers.map(p => p.steam_id).filter(Boolean);
+        if (steamids.length === 0) {
+            this._running = false;
+            this._renderEmpty('Нет игроков онлайн');
+            return;
+        }
+
+        const prog = document.getElementById('pubchecker-progress');
+        const fill = document.getElementById('pubchecker-progress-fill');
+        const text = document.getElementById('pubchecker-progress-text');
+        if (prog) prog.style.display = 'flex';
+        if (fill) fill.style.width = '10%';
+        if (text) text.textContent = `Проверяем ${steamids.length} игроков на yooma...`;
+
+        try {
+            if (this._sources.has('yooma')) {
+                // Батчами по 10 — yooma закрывает соединение при большом количестве
+                const BATCH = 10;
+                for (let i = 0; i < steamids.length; i += BATCH) {
+                    const chunk = steamids.slice(i, i + BATCH);
+                    if (text) text.textContent = `yooma: ${i}/${steamids.length}...`;
+                    const data = await this._yoomaCheckBrowser(chunk);
+                    const got = Object.keys(data).length;
+                    const banned = Object.values(data).filter(r => r.banned).length;
+                    console.log(`[pubcheck] batch ${i}-${i+BATCH}: got ${got}, banned ${banned}`);
+                    for (const [sid, info] of Object.entries(data)) {
+                        if (info.banned) this._results[sid] = info;
+                        else if (!this._results[sid]?.banned) this._results[sid] = info;
+                    }
+                    if (fill) fill.style.width = Math.round((i + BATCH) / steamids.length * 80) + '%';
+                    // Пауза между батчами чтобы не перегружать yooma
+                    if (i + BATCH < steamids.length) await new Promise(r => setTimeout(r, 500));
+                }
+            }
+            if (this._sources.has('cs2red')) {
+                if (text) text.textContent = 'Проверяем cs2red...';
+                const res = await fetch('/api/pubcheck/cs2red', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ steamids })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    for (const [sid, info] of Object.entries(data)) {
+                        if (info.banned) this._results[sid] = info;
+                        else if (!this._results[sid]?.banned) this._results[sid] = info;
+                    }
+                }
+            }
+            if (fill) fill.style.width = '100%';
+            if (text) text.textContent = '✅ Готово';
+            setTimeout(() => { if (prog) prog.style.display = 'none'; }, 1500);
+        } catch (e) {
+            if (text) text.textContent = '❌ Ошибка: ' + e.message;
+        }
+
+        this._running = false;
+        this._render();
+    },    _render() {
+        const listEl = document.getElementById('pubchecker-list');
+        const statsRow = document.getElementById('pubchecker-stats-row');
+        if (!listEl) return;
+
+        // Только игроки онлайн у которых есть результат
+        const entries = allPlayers
+            .map(p => ({ player: p, info: this._results[p.steam_id] }))
+            .filter(e => e.info);
+
+        const banned = entries.filter(e => e.info.banned);
+        const total = entries.length;
+
+        if (statsRow) {
+            statsRow.style.display = 'flex';
+            const el = id => document.getElementById(id);
+            if (el('pub-stat-banned')) el('pub-stat-banned').textContent = banned.length;
+            if (el('pub-stat-total'))  el('pub-stat-total').textContent  = total;
+            if (el('pub-stat-updated')) el('pub-stat-updated').textContent = new Date().toLocaleTimeString('ru-RU');
+        }
+
+        // Обновляем бейдж
+        const badge = document.getElementById('pubchecker-badge');
+        if (badge) {
+            badge.textContent = banned.length;
+            badge.style.display = banned.length > 0 ? '' : 'none';
+        }
+
+        if (entries.length === 0) {
+            listEl.innerHTML = `<div class="empty"><span class="empty-emoji">✅</span><p>Нет данных — нажми Обновить</p></div>`;
+            return;
+        }
+
+        // Сортируем: сначала забаненные
+        entries.sort((a, b) => (b.info.banned ? 1 : 0) - (a.info.banned ? 1 : 0));
+
+        listEl.innerHTML = '';
+        for (const { player, info } of entries) {
+            if (!info.banned) continue; // показываем только забаненных
+            const card = document.createElement('div');
+            card.className = 'pub-ban-card';
+            const avatar = escapeHtml(info.avatar || player.avatar || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg');
+            const name = escapeHtml(info.name || player.name || player.steam_id);
+            const expires = info.expires
+                ? `до ${new Date(info.expires * 1000).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}`
+                : 'навсегда';
+            const srcBadge = `<span class="pub-src-badge ${escapeHtml(info.source)}">${escapeHtml(info.source)}</span>`;
+            const server = escapeHtml(player.server?.name || '—');
+
+            card.innerHTML = `
+                <img src="${avatar}" class="pub-ban-avatar"
+                     onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
+                <div class="pub-ban-info">
+                    <div class="pub-ban-name">${name} ${srcBadge}</div>
+                    <div class="pub-ban-steamid" onclick="App.copyToClipboard('${escapeHtml(player.steam_id)}')">${escapeHtml(player.steam_id)}</div>
+                    <div class="pub-ban-reason">📋 ${escapeHtml(info.reason || '—')} · ⏱ ${expires}</div>
+                    <div class="pub-ban-server">🖥 ${server}</div>
+                </div>
+                <div class="pub-ban-btns">
+                    <button class="btn-steam-small" onclick="App.openSteamProfile('${escapeHtml(player.steam_id)}')">Steam</button>
+                    <button class="btn-fear-small" onclick="App.openFearProfile('${escapeHtml(player.steam_id)}')">Fear</button>
+                    <button class="btn-fear-small" style="background:rgba(255,165,0,.15);border-color:rgba(255,165,0,.3)"
+                            onclick="window.open('https://yooma.su/ru/profile/${escapeHtml(player.steam_id)}','_blank')">Yooma</button>
+                </div>
+            `;
+            listEl.appendChild(card);
+        }
+
+        if (listEl.children.length === 0) {
+            listEl.innerHTML = `<div class="empty"><span class="empty-emoji">✅</span><p>Забаненных на пабликах нет</p></div>`;
+        }
+    },
+
+    _renderEmpty(msg) {
+        const listEl = document.getElementById('pubchecker-list');
+        if (listEl) listEl.innerHTML = `<div class="empty"><span class="empty-emoji">🌐</span><p>${msg}</p></div>`;
+    }
+};
+
+// ── REPORTS MANAGER ──────────────────────────
+const ReportsManager = {
+    _reports: [],
+    _tab: 'new',
+    _timer: null,
+    _autoCloseOffline: false,
+    _autoCloseTimer: null,
+    _settings: JSON.parse(localStorage.getItem('rep_auto_settings') || '{}'),
+
+    _getSettings() {
+        // Читаем из localStorage каждый раз — чтобы подхватывать свежие настройки
+        let stored = {};
+        try { stored = JSON.parse(localStorage.getItem('rep_auto_settings') || '{}'); } catch {}
+        const raw = { minAge: 5, maxKd: 999, onlyOffline: false, skipBanned: false, result: 'Нарушение не подтверждено', ...stored };
+        return {
+            minAge:      parseFloat(raw.minAge)  || 0,
+            maxKd:       parseFloat(raw.maxKd)   || 999,
+            onlyOffline: raw.onlyOffline === true || raw.onlyOffline === 'true' || raw.onlyOffline === 1,
+            skipBanned:  raw.skipBanned  === true || raw.skipBanned  === 'true' || raw.skipBanned  === 1,
+            result:      raw.result || 'Нарушение не подтверждено',
+        };
+    },
+
+    _saveSettings() {
+        localStorage.setItem('rep_auto_settings', JSON.stringify(this._settings));
+    },
+
+    showSettings() {
+        const modal = document.getElementById('reports-close-modal');
+        const content = document.getElementById('reports-close-content');
+        if (!modal || !content) return;
+        const s = this._getSettings();
+        content.innerHTML = `
+            <div class="rep-settings-modal-inner">
+                <div class="rep-settings-header">
+                    <span class="rep-settings-icon">⚙️</span>
+                    <span class="rep-settings-title">Настройки авто-закрытия</span>
+                </div>
+                <div class="rep-settings-body">
+                    <div class="rep-settings-row">
+                        <span class="rep-settings-label">Мин. возраст репорта (мин)<small class="rep-settings-hint">Закрывать если репорт висит дольше N минут (для всех)</small></span>
+                        <input type="number" id="rs-min-age" value="${s.minAge}" min="0" max="1440" class="rep-settings-input">
+                    </div>
+                    <div class="rep-settings-row">
+                        <span class="rep-settings-label">Макс. K/D нарушителя<small class="rep-settings-hint">Закрывать если KD &lt; этого значения (только онлайн игроки, 999 = все)</small></span>
+                        <input type="number" id="rs-max-kd" value="${s.maxKd}" min="0" max="999" step="0.1" class="rep-settings-input">
+                    </div>
+                    <div class="rep-settings-row">
+                        <span class="rep-settings-label">Закрывать офлайн игроков<small class="rep-settings-hint">☑ Если игрок вышел с сервера — закрыть репорт</small></span>
+                        <label class="rep-toggle"><input type="checkbox" id="rs-only-offline" ${s.onlyOffline ? 'checked' : ''}><span class="rep-toggle-slider"></span></label>
+                    </div>
+                    <div class="rep-settings-row">
+                        <span class="rep-settings-label">Забаненные игроки<small class="rep-settings-hint">☑ Банить — закрывать тикеты на забаненных<br>☐ Пропускать — не трогать тикеты на забаненных</small></span>
+                        <label class="rep-toggle"><input type="checkbox" id="rs-ban-action" ${!s.skipBanned ? 'checked' : ''}><span class="rep-toggle-slider"></span></label>
+                    </div>
+                    <div class="rep-settings-row">
+                        <span class="rep-settings-label">Причина закрытия</span>
+                        <select id="rs-result" class="rep-settings-select">
+                            ${['Нарушение не подтверждено','Недостаточно доказательств','Игрок был наказан','Требуется дополнительная проверка'].map(r =>
+                                `<option value="${r}" ${s.result === r ? 'selected' : ''}>${r}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="rep-close-btns">
+                    <button class="rep-btn-accept" onclick="ReportsManager._saveSettingsFromModal()">Сохранить</button>
+                    <button class="rep-btn-cancel" onclick="ReportsManager.closeCloseModal()">Отмена</button>
+                </div>
+            </div>
+        `;
+        modal.style.display = 'flex';
+    },
+
+    _saveSettingsFromModal() {
+        this._settings.minAge      = parseFloat(document.getElementById('rs-min-age')?.value) || 0;
+        this._settings.maxKd       = parseFloat(document.getElementById('rs-max-kd')?.value) || 999;
+        this._settings.onlyOffline = document.getElementById('rs-only-offline')?.checked ?? false;
+        this._settings.skipBanned  = !(document.getElementById('rs-ban-action')?.checked ?? true);
+        this._settings.result      = document.getElementById('rs-result')?.value || 'Нарушение не подтверждено';
+        this._saveSettings();
+        this.closeCloseModal();
+        const s = this._getSettings();
+        UI.showToast(`✅ Сохранено: возраст=${s.minAge}мин KD<${s.maxKd} офлайн=${s.onlyOffline}`);
+    },
+
+    open() {
+        this.refresh();
+        const sid = AuthManager.user?.steamid || AuthManager.user?.steam_id || '';
+        const isOwner = OWNERS.has(sid);
+        const btn = document.getElementById('rep-close-offline-btn');
+        if (btn) btn.style.display = isOwner ? '' : 'none';
+        const autoBtn = document.getElementById('rep-auto-toggle-btn');
+        if (autoBtn) {
+            autoBtn.style.display = isOwner ? '' : 'none';
+            this._updateAutoBtn();
+        }
+        const gearBtn = document.getElementById('rep-settings-btn');
+        if (gearBtn) gearBtn.style.display = '';
+        // Автообновление каждые 5 секунд
+        if (this._timer) clearInterval(this._timer);
+        this._timer = setInterval(() => this._silentRefresh(), 10000); // каждые 10 сек
+    },
+
+    async _closeAllOpen(ids) {
+        if (!ids?.length) return;
+        const modal = document.getElementById('reports-close-modal');
+        const content = document.getElementById('reports-close-content');
+        if (!modal || !content) return;
+        content.innerHTML = `
+            <div class="rep-close-title">Закрыть все открытые (${ids.length})</div>
+            ${['Нарушение не подтверждено','Недостаточно доказательств','Игрок был наказан','Требуется дополнительная проверка'].map(r => `
+                <label class="rep-resolve-option" onclick="document.getElementById('rep-close-verdict').value='${r}'">
+                    <input type="radio" name="rep-close-reason" value="${r}"> ${r}
+                </label>
+            `).join('')}
+            <textarea id="rep-close-verdict" class="rep-verdict-input" placeholder="Вердикт (обязательно)..." required></textarea>
+            <div class="rep-close-btns">
+                <button class="rep-btn-accept" onclick="ReportsManager._doCloseFromModal(${JSON.stringify(ids).replace(/"/g,'&quot;')})">Закрыть все</button>
+                <button class="rep-btn-cancel" onclick="ReportsManager.closeCloseModal()">Отмена</button>
+            </div>
+        `;
+        modal.style.display = 'flex';
+    },
+
+    close() {
+        if (this._timer) { clearInterval(this._timer); this._timer = null; }
+        // Авто-закрытие продолжает работать в фоне
+    },
+
+    toggleAutoClose() {
+        this._autoCloseOffline = !this._autoCloseOffline;
+        this._updateAutoBtn();
+        if (this._autoCloseOffline) {
+            UI.showToast('✅ Авто-закрытие включено');
+            // Запускаем СРАЗУ
+            this._autoCloseOfflineTick();
+            if (this._autoCloseTimer) clearInterval(this._autoCloseTimer);
+            // Каждые 5 секунд
+            this._autoCloseTimer = setInterval(() => this._autoCloseOfflineTick(), 5000);
+        } else {
+            UI.showToast('⏹ Авто-закрытие выключено');
+            if (this._autoCloseTimer) { clearInterval(this._autoCloseTimer); this._autoCloseTimer = null; }
+        }
+    },
+
+    _updateAutoBtn() {
+        const btn = document.getElementById('rep-auto-toggle-btn');
+        if (!btn) return;
+        if (this._autoCloseOffline) {
+            btn.textContent = '🟢 Авто: вкл';
+            btn.style.background = 'rgba(0,230,118,.15)';
+            btn.style.borderColor = 'rgba(0,230,118,.4)';
+            btn.style.color = 'var(--green)';
+        } else {
+            btn.textContent = '⚙️ Авто: выкл';
+            btn.style.background = '';
+            btn.style.borderColor = '';
+            btn.style.color = '';
+        }
+    },
+
+    async _autoCloseOfflineTick() {
+        const s = this._getSettings();
+        console.log(`[auto-close] tick: minAge=${s.minAge} maxKd=${s.maxKd} closeOffline=${s.onlyOffline}`);
+        const onlineSids = new Set(allPlayers.map(p => p.steam_id));
+        const nowMs = Date.now();
+        const toClose = [];
+
+        // Группируем все репорты по intruder_steamid
+        const groups = {};
+        for (const r of this._reports) {
+            if (!groups[r.intruder_steamid]) groups[r.intruder_steamid] = [];
+            groups[r.intruder_steamid].push(r);
+        }
+
+        console.log(`[auto-close] групп: ${Object.keys(groups).length}, репортов: ${this._reports.length}`);
+
+        for (const [sid, reps] of Object.entries(groups)) {
+            // Проверяем бан
+            const isBanned = BansManager._lastResult?.[sid]?.bans?.some(b => b.status === 1) || false;
+            if (s.skipBanned && isBanned) { console.log(`[auto-close] skip ${sid} забанен`); continue; }
+
+            const isOnline = onlineSids.has(sid);
+            const onlinePlayer = allPlayers.find(p => p.steam_id === sid);
+
+            for (const rep of reps) {
+                const repAge = (nowMs - new Date(rep.created_at || 0).getTime()) / 60000;
+                let shouldClose = false;
+                let reason = '';
+
+                // Условие 1: игрок офлайн и включено "Закрывать офлайн"
+                if (s.onlyOffline && !isOnline) {
+                    shouldClose = true;
+                    reason = `офлайн`;
+                }
+
+                // Условие 2: игрок онлайн и KD < порога
+                if (!shouldClose && isOnline && onlinePlayer && s.maxKd < 999) {
+                    const kd = onlinePlayer.deaths > 0
+                        ? onlinePlayer.kills / onlinePlayer.deaths
+                        : (onlinePlayer.kills || 0);
+                    if (kd < s.maxKd) {
+                        shouldClose = true;
+                        reason = `kd=${kd.toFixed(2)}<${s.maxKd}`;
+                    }
+                }
+
+                // Условие 3: репорт висит дольше minAge минут (для всех)
+                if (!shouldClose && s.minAge > 0 && repAge >= s.minAge) {
+                    shouldClose = true;
+                    reason = `age=${repAge.toFixed(1)}min>=${s.minAge}min`;
+                }
+
+                if (shouldClose) {
+                    console.log(`[auto-close] ✅ #${rep.id} причина: ${reason}`);
+                    toClose.push(rep.id);
+                } else {
+                    console.log(`[auto-close] skip #${rep.id} онлайн=${isOnline} age=${repAge.toFixed(1)}min`);
+                }
+            }
+        }
+
+        if (!toClose.length) { console.log('[auto-close] нечего закрывать'); return; }
+        console.log(`[auto-close] закрываем ${toClose.length}: ${toClose.join(',')}`);
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
+        try {
+            const res = await fetch('/api/fear/reports/close-all', {
+                method: 'POST', headers,
+                body: JSON.stringify({ ticket_ids: toClose, result: s.result })
+            });
+            const data = await res.json();
+            const ok = data.results?.filter(r => r.ok || r.status === 200 || r.status === 201 || r.status === 204).length || 0;
+            if (ok > 0) {
+                this._reports = this._reports.filter(r => !toClose.includes(r.id));
+                this._render();
+                UI.showToast(`✅ Авто: закрыто ${ok} тикетов`);
+            } else {
+                console.log('[auto-close] не закрылось:', JSON.stringify(data.results));
+            }
+        } catch (e) { console.log('[auto-close] error:', e.message); }
+    },
+
+    // Загружаем репорты: новые из /recent, открытые из history?status=open
+    async _loadReports() {
+        const headers = {};
+        if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
+
+        const [resNew, resOpen] = await Promise.all([
+            fetch('/api/fear/reports?status=recent', { headers }).catch(() => null),
+            fetch('/api/fear/reports?status=open', { headers }).catch(() => null),
+        ]);
+
+        const rawNew  = resNew?.ok  ? await resNew.json().catch(() => null)  : null;
+        const rawOpen = resOpen?.ok ? await resOpen.json().catch(() => null) : null;
+
+        if (rawNew === null && rawOpen === null) return null;
+
+        const newArr  = (Array.isArray(rawNew)  ? rawNew  : (rawNew?.reports  || [])).map(r => ({ ...r, _type: 'new' }));
+        const openArr = (Array.isArray(rawOpen) ? rawOpen : (rawOpen?.reports || [])).map(r => ({ ...r, _type: 'open' }));
+
+        return [...newArr, ...openArr];
+    },
+
+    _updateBadge(reports) {
+        const badge = document.getElementById('reports-badge');
+        if (!badge) return;
+        const cnt = reports.filter(r => r._type === 'new').length;
+        badge.textContent = cnt;
+        badge.style.display = cnt > 0 ? '' : 'none';
+    },
+
+    async _silentRefresh() {
+        try {
+            const fresh = await this._loadReports();
+            // Защита от пропадания: не обновляем если пришёл null или пустой массив при непустом кеше
+            if (fresh === null) return;
+            if (fresh.length === 0 && this._reports.length > 0) {
+                console.log('[reports] silent refresh returned empty, keeping cache');
+                return;
+            }
+            const prev = JSON.stringify(this._reports.map(r => r.id).sort());
+            this._reports = fresh;
+            this._updateBadge(this._reports);
+            const curr = JSON.stringify(this._reports.map(r => r.id).sort());
+            if (curr !== prev) this._render();
+        } catch {}
+    },
+
+    async refresh() {
+        const prog = document.getElementById('reports-progress');
+        const fill = document.getElementById('reports-progress-fill');
+        const text = document.getElementById('reports-progress-text');
+        if (prog) prog.style.display = 'flex';
+        if (fill) fill.style.width = '20%';
+        if (text) text.textContent = 'Загружаем репорты...';
+
+        try {
+            const fresh = await this._loadReports();
+            if (fresh !== null) {
+                this._reports = fresh;
+                this._updateBadge(this._reports);
+            }
+            if (fill) fill.style.width = '100%';
+            if (text) text.textContent = `Загружено ${this._reports.length} репортов`;
+            setTimeout(() => { if (prog) prog.style.display = 'none'; }, 1000);
+        } catch (e) {
+            if (text) text.textContent = '❌ ' + e.message;
+        }
+
+        this._render();
+    },
+
+    switchTab(tab, btn) {
+        this._tab = tab;
+        document.querySelectorAll('.rep-tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this._render();
+    },
+
+    _getFiltered() {
+        const reports = this._reports.filter(r => r._type === this._tab);
+        // Группируем по intruder_steamid
+        const groups = {};
+        for (const r of reports) {
+            const sid = r.intruder_steamid;
+            if (!groups[sid]) groups[sid] = [];
+            groups[sid].push(r);
+        }
+        return groups;
+    },
+
+    _render() {
+        const listEl = document.getElementById('reports-list');
+        if (!listEl) return;
+
+        const groups = this._getFiltered();
+        const entries = Object.entries(groups);
+
+        if (!entries.length) {
+            listEl.innerHTML = `<div class="empty"><span class="empty-emoji">✅</span><p>Репортов нет</p></div>`;
+            return;
+        }
+
+        listEl.innerHTML = '';
+
+        // Кнопка "Закрыть все открытые"
+        if (this._tab === 'open' && entries.length > 0) {
+            const allOpenIds = entries.flatMap(([, reps]) => reps.map(r => r.id));
+            const closeAllBtn = document.createElement('button');
+            closeAllBtn.className = 'rep-btn-close-all-open';
+            closeAllBtn.textContent = `🔴 Закрыть все открытые (${allOpenIds.length})`;
+            closeAllBtn.onclick = () => ReportsManager._closeAllOpen(allOpenIds);
+            listEl.appendChild(closeAllBtn);
+        }
+
+        // Сортируем по количеству репортов (больше = выше)
+        entries.sort((a, b) => b[1].length - a[1].length);
+
+        // Заголовок таблицы
+        const header = document.createElement('div');
+        header.className = 'rep-table-header';
+        header.innerHTML = `
+            <span>ДАТА</span>
+            <span>НАРУШИТЕЛЬ</span>
+            <span>K/D</span>
+            <span>ПРИЧИНА</span>
+            <span>СЕРВЕР</span>
+            <span>ДЕЙСТВИЕ</span>
+        `;
+        listEl.appendChild(header);
+
+        for (const [sid, reps] of entries) {
+            const first = reps[0];
+            const count = reps.length;
+            const date = new Date(first.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+
+            // Ищем игрока онлайн
+            const onlinePlayer = allPlayers.find(p => p.steam_id === sid);
+            const kd = onlinePlayer ? UI.calculateKD(onlinePlayer.kills, onlinePlayer.deaths) : 'Офлайн';
+            const kdClass = onlinePlayer ? 'rep-kd-online' : 'rep-kd-offline';
+
+            const row = document.createElement('div');
+            const repColorClass = count >= 5 ? 'rep-row-red' : count >= 3 ? 'rep-row-yellow' : 'rep-row-green';
+            // Проверяем бан на Fear
+            const isBanned = BansManager._lastResult?.[sid]?.bans?.some(b => b.status === 1) || false;
+            const bannedBadge = isBanned ? `<span class="rep-banned-badge">🔨 ЗАБАНЕН</span>` : '';
+            row.className = `rep-table-row ${repColorClass} ${isBanned ? 'has-banned' : ''}`;
+            row.innerHTML = `
+                <div class="rep-date">
+                    <div>${date}</div>
+                    <div class="rep-count">${count} ${count === 1 ? 'РЕПОРТ' : 'РЕПОРТА'}</div>
+                </div>
+                <div class="rep-player">
+                    <img src="${escapeHtml(first.intruder_avatar || '')}" class="rep-avatar" loading="lazy"
+                         onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
+                    <div>
+                        <div class="rep-name">${escapeHtml(first.intruder)} ${bannedBadge}</div>
+                        <div class="rep-steamid" onclick="App.copyToClipboard('${escapeHtml(sid)}')">${escapeHtml(sid)}</div>
+                    </div>
+                </div>
+                <div class="rep-kd ${kdClass}">${kd}</div>
+                <div class="rep-reason">${escapeHtml(first.reason || '—')}</div>
+                <div class="rep-server">
+                    <div>${escapeHtml(first.server_name || '—')}</div>
+                    ${onlinePlayer ? `<button class="btn-connect-small" onclick="App.connectToServer('${escapeHtml(first.server_ip)}:${first.server_port}')">🎯 Connect</button>` : ''}
+                </div>
+                <div class="rep-actions">
+                    <button class="rep-btn-accept" onclick="ReportsManager.showCloseModal(${JSON.stringify(reps).replace(/"/g, '&quot;')})">Принять все</button>
+                    <button class="rep-btn-detail" onclick="ReportsManager.showDetail(${JSON.stringify(reps).replace(/"/g, '&quot;')})">Подробнее</button>
+                </div>
+            `;
+            listEl.appendChild(row);
+        }
+    },
+
+    showDetail(reps) {
+        const modal = document.getElementById('reports-modal');
+        const left = document.getElementById('reports-modal-left');
+        const right = document.getElementById('reports-modal-right');
+        if (!modal) return;
+
+        const first = reps[0];
+        const name = escapeHtml(first.intruder);
+
+        // Левая панель — список тикетов
+        left.innerHTML = `
+            <div class="rep-modal-title">Репорты (${reps.length})<br><small>${name}</small></div>
+            ${reps.map((r, i) => `
+                <div class="rep-modal-ticket ${i === 0 ? 'active' : ''}" onclick="ReportsManager._selectTicket(${r.id}, this)">
+                    <div class="rep-modal-ticket-id">Тикет #${r.id}</div>
+                    <div class="rep-modal-ticket-info">Отправитель: ${escapeHtml(r.sender)}</div>
+                    <div class="rep-modal-ticket-info">${escapeHtml(r.server_name)}</div>
+                </div>
+            `).join('')}
+        `;
+
+        // Правая панель — первый тикет
+        this._renderTicketDetail(right, reps[0], reps);
+
+        modal.style.display = 'flex';
+        this._currentReps = reps;
+        this._pendingClose = {}; // { ids: [], result: '' }
+    },
+
+    _selectTicket(id, el) {
+        document.querySelectorAll('.rep-modal-ticket').forEach(t => t.classList.remove('active'));
+        el.classList.add('active');
+        const rep = this._currentReps.find(r => r.id === id);
+        if (rep) this._renderTicketDetail(document.getElementById('reports-modal-right'), rep, this._currentReps);
+    },
+
+    _renderTicketDetail(container, rep, allReps) {
+        const addr = `${rep.server_ip}:${rep.server_port}`;
+        const date = new Date(rep.created_at).toLocaleString('ru-RU');
+        container.innerHTML = `
+            <div class="rep-detail-header">
+                <div class="rep-detail-title">Тикет #${rep.id}</div>
+                <button class="rep-modal-close" onclick="ReportsManager.closeModal()">✕</button>
+            </div>
+            <div class="rep-detail-parties">
+                <div class="rep-detail-party">
+                    <div class="rep-detail-party-label">ОТПРАВИТЕЛЬ</div>
+                    <img src="${escapeHtml(rep.sender_avatar || '')}" class="rep-detail-avatar">
+                    <div class="rep-detail-party-name">${escapeHtml(rep.sender)}</div>
+                    <div class="rep-detail-party-sid">${escapeHtml(rep.sender_steamid)}</div>
+                    <div class="rep-detail-party-btns">
+                        <button class="btn-fear-small" onclick="App.openFearProfile('${escapeHtml(rep.sender_steamid)}')">Fear</button>
+                        <button class="btn-steam-small" onclick="App.openSteamProfile('${escapeHtml(rep.sender_steamid)}')">Steam</button>
+                    </div>
+                </div>
+                <div class="rep-detail-party">
+                    <div class="rep-detail-party-label">НАРУШИТЕЛЬ</div>
+                    <img src="${escapeHtml(rep.intruder_avatar || '')}" class="rep-detail-avatar">
+                    <div class="rep-detail-party-name">${escapeHtml(rep.intruder)}</div>
+                    <div class="rep-detail-party-sid">${escapeHtml(rep.intruder_steamid)}</div>
+                    <div class="rep-detail-party-btns">
+                        <button class="btn-fear-small" onclick="App.openFearProfile('${escapeHtml(rep.intruder_steamid)}')">Fear</button>
+                        <button class="btn-steam-small" onclick="App.openSteamProfile('${escapeHtml(rep.intruder_steamid)}')">Steam</button>
+                    </div>
+                </div>
+            </div>
+            <div class="rep-detail-server">
+                <div>🖥 ${escapeHtml(rep.server_name)} · ${escapeHtml(addr)}</div>
+                <button class="btn-connect-small" onclick="App.connectToServer('${escapeHtml(addr)}')">🎯 Connect</button>
+                <button class="btn-copy-small" onclick="App.copyToClipboard('connect ${escapeHtml(addr)}')">📋</button>
+            </div>
+            <div class="rep-detail-meta">📅 ${date} · 📋 ${escapeHtml(rep.reason)}</div>
+            <div class="rep-detail-resolve">
+                <div class="rep-detail-resolve-title">Выберите решение</div>
+                ${['Игрок был наказан', 'Нарушение не подтверждено', 'Недостаточно доказательств', 'Требуется дополнительная проверка'].map(r => `
+                    <label class="rep-resolve-option" onclick="document.getElementById('rep-verdict-${rep.id}').value='${r}'">
+                        <input type="radio" name="rep-resolve-${rep.id}" value="${r}"> ${r}
+                    </label>
+                `).join('')}
+                <textarea id="rep-verdict-${rep.id}" class="rep-verdict-input" placeholder="Вердикт..."></textarea>
+                <div class="rep-detail-btns">
+                    <button class="rep-btn-save" onclick="ReportsManager._saveCurrent(${rep.id})">Сохранить для текущего</button>
+                    <button class="rep-btn-save-all" onclick="ReportsManager._saveAll(${JSON.stringify(allReps.map(r=>r.id)).replace(/"/g,'&quot;')}, ${rep.id})">Применить ко всем</button>
+                </div>
+                <div id="rep-pending-info-${rep.id}" class="rep-pending-info" style="display:none"></div>
+            </div>
+            <div class="rep-detail-footer">
+                <button class="rep-btn-accept" onclick="ReportsManager._applyPending()">Применить</button>
+                <button class="rep-btn-cancel" onclick="ReportsManager.closeModal()">Отмена</button>
+            </div>
+        `;
+    },
+
+    // Сохранить решение для текущего тикета (без отправки)
+    _saveCurrent(ticketId) {
+        const radio = document.querySelector(`input[name="rep-resolve-${ticketId}"]:checked`)?.value;
+        const text = document.getElementById(`rep-verdict-${ticketId}`)?.value?.trim();
+        const result = text || radio;
+        if (!result) { UI.showToast('❌ Выбери решение или введи вердикт', 'error'); return; }
+        this._pendingClose = { ids: [ticketId], result };
+        const info = document.getElementById(`rep-pending-info-${ticketId}`);
+        if (info) { info.style.display = 'block'; info.textContent = `✅ Сохранено: "${result}"`; }
+        UI.showToast('Сохранено для текущего');
+    },
+
+    // Сохранить решение для всех тикетов (без отправки)
+    _saveAll(allIds, currentId) {
+        const radio = document.querySelector(`input[name="rep-resolve-${currentId}"]:checked`)?.value;
+        const text = document.getElementById(`rep-verdict-${currentId}`)?.value?.trim();
+        const result = text || radio;
+        if (!result) { UI.showToast('❌ Выбери решение или введи вердикт', 'error'); return; }
+        this._pendingClose = { ids: allIds, result };
+        const info = document.getElementById(`rep-pending-info-${currentId}`);
+        if (info) { info.style.display = 'block'; info.textContent = `✅ Применится ко всем (${allIds.length}): "${result}"`; }
+        UI.showToast(`Сохранено для ${allIds.length} тикетов`);
+    },
+
+    // Применить — реально закрыть
+    async _applyPending() {
+        if (!this._pendingClose?.ids?.length) {
+            UI.showToast('❌ Сначала выбери решение', 'error'); return;
+        }
+        await this._doClose(this._pendingClose.ids, this._pendingClose.result);
+        this._pendingClose = {};
+    },
+
+    showCloseModal(reps) {
+        const modal = document.getElementById('reports-close-modal');
+        const content = document.getElementById('reports-close-content');
+        if (!modal) return;
+
+        const ids = reps.map(r => r.id);
+        const name = escapeHtml(reps[0].intruder);
+
+        content.innerHTML = `
+            <div class="rep-close-title">Закрыть репорты на ${name}</div>
+            <div class="rep-close-subtitle">${reps.length} репорт(а)</div>
+            ${['Игрок был наказан', 'Нарушение не подтверждено', 'Недостаточно доказательств', 'Требуется дополнительная проверка'].map(r => `
+                <label class="rep-resolve-option" onclick="document.getElementById('rep-close-verdict').value='${r}'">
+                    <input type="radio" name="rep-close-reason" value="${r}"> ${r}
+                </label>
+            `).join('')}
+            <textarea id="rep-close-verdict" class="rep-verdict-input" placeholder="Вердикт (обязательно)..." required></textarea>
+            <div class="rep-close-btns">
+                <button class="rep-btn-accept" onclick="ReportsManager._doCloseFromModal(${JSON.stringify(ids).replace(/"/g,'&quot;')})">Закрыть все</button>
+                <button class="rep-btn-cancel" onclick="ReportsManager.closeCloseModal()">Отмена</button>
+            </div>
+        `;
+        modal.style.display = 'flex';
+    },
+
+    async _doCloseFromModal(ids) {
+        const text = document.getElementById('rep-close-verdict')?.value?.trim();
+        if (!text) { UI.showToast('❌ Введи вердикт', 'error'); return; }
+        this.closeCloseModal();
+        await this._doClose(ids, text);
+    },
+
+    async _doClose(ids, result) {
+        const headers = { 'Content-Type': 'application/json' };
+        if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                const res = await fetch('/api/fear/reports/close-all', {
+                    method: 'POST', headers,
+                    body: JSON.stringify({ ticket_ids: ids, result })
+                });
+                if (!res.ok) {
+                    if (attempt < 3) { await new Promise(r => setTimeout(r, 1000 * attempt)); continue; }
+                    UI.showToast(`❌ Ошибка сервера: ${res.status}`, 'error'); return;
+                }
+                const data = await res.json();
+                console.log('[reports] close-all response:', JSON.stringify(data));
+                const ok = data.results?.filter(r => r.ok || r.status === 200 || r.status === 201 || r.status === 204).length || 0;
+                if (ok > 0) {
+                    UI.showToast(`✅ Закрыто ${ok}/${ids.length} репортов`);
+                    this._reports = this._reports.filter(r => !ids.includes(r.id));
+                    this.closeModal();
+                    this.closeCloseModal();
+                    this._render();
+                    setTimeout(() => this._silentRefresh(), 2000);
+                    return;
+                }
+                const statuses = data.results?.map(r => `${r.id}:${r.status}`).join(', ') || 'нет данных';
+                if (attempt < 3) { await new Promise(r => setTimeout(r, 1000 * attempt)); continue; }
+                UI.showToast(`❌ Не удалось закрыть (${statuses})`, 'error');
+                return;
+            } catch (e) {
+                if (attempt < 3) { await new Promise(r => setTimeout(r, 1000 * attempt)); continue; }
+                UI.showToast('❌ Ошибка: ' + e.message, 'error');
+            }
+        }
+    },
+
+    // Закрыть все репорты офлайн игроков (только для владельца)
+    closeOfflineConfirm() {
+        // Находим офлайн игроков — тех кого нет в allPlayers
+        const onlineSids = new Set(allPlayers.map(p => p.steam_id));
+        const groups = this._getFiltered();
+        const offlineGroups = Object.entries(groups).filter(([sid]) => !onlineSids.has(sid));
+
+        if (!offlineGroups.length) { UI.showToast('Нет офлайн игроков с репортами'); return; }
+
+        const allIds = offlineGroups.flatMap(([, reps]) => reps.map(r => r.id));
+        const names = offlineGroups.map(([, reps]) => reps[0].intruder).slice(0, 5).join(', ');
+
+        const modal = document.getElementById('reports-close-modal');
+        const content = document.getElementById('reports-close-content');
+        if (!modal) return;
+
+        content.innerHTML = `
+            <div class="rep-close-title">🔴 Закрыть репорты офлайн игроков</div>
+            <div class="rep-close-subtitle">${offlineGroups.length} игроков · ${allIds.length} репортов<br><small style="color:var(--t3)">${names}${offlineGroups.length > 5 ? '...' : ''}</small></div>
+            ${['Нарушение не подтверждено', 'Недостаточно доказательств', 'Игрок был наказан', 'Требуется дополнительная проверка'].map(r => `
+                <label class="rep-resolve-option" onclick="document.getElementById('rep-close-verdict').value='${r}'">
+                    <input type="radio" name="rep-close-reason" value="${r}"> ${r}
+                </label>
+            `).join('')}
+            <textarea id="rep-close-verdict" class="rep-verdict-input" placeholder="Вердикт (обязательно)..." required></textarea>
+            <div class="rep-close-btns">
+                <button class="rep-btn-accept" onclick="ReportsManager._doCloseFromModal(${JSON.stringify(allIds).replace(/"/g,'&quot;')})">Закрыть все (${allIds.length})</button>
+                <button class="rep-btn-cancel" onclick="ReportsManager.closeCloseModal()">Отмена</button>
+            </div>
+        `;
+        modal.style.display = 'flex';
+    },
+
+    closeModal() {
+        const m = document.getElementById('reports-modal');
+        if (m) m.style.display = 'none';
+    },
+
+    closeCloseModal() {
+        const m = document.getElementById('reports-close-modal');
+        if (m) m.style.display = 'none';
+    },
+};
+
+// ── PLAYER CHECK MANAGER ─────────────────────────────────
+const PlayerCheckManager = {
+    open() {
+        const input = document.getElementById('player-check-input');
+        if (input) input.focus();
+        // Инициализируем toggle CS:GO
+        const toggle = document.getElementById('toggle-csgo-players');
+        if (toggle) {
+            const track = toggle.querySelector('.toggler-track');
+            if (track) track.classList.toggle('active', App._showCsgoPlayers);
+        }
+    },
+
+    async check() {
+        const input = document.getElementById('player-check-input');
+        const result = document.getElementById('player-check-result');
+        const steamid = input?.value?.trim();
+        if (!steamid) return;
+        result.innerHTML = `<div style="text-align:center;padding:30px;color:var(--t3)">⏳ Загружаем данные...</div>`;
+        try {
+            const headers = {};
+            if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
+            const res = await fetch(`/api/fear/player-check/${encodeURIComponent(steamid)}`, { headers, signal: AbortSignal.timeout(15000) });
+            if (!res.ok) { result.innerHTML = `<div style="color:#ff5050;padding:20px">❌ Ошибка ${res.status}</div>`; return; }
+            const d = await res.json();
+            this._render(result, d);
+        } catch (e) { result.innerHTML = `<div style="color:#ff5050;padding:20px">❌ ${e.message}</div>`; }
+    },
+
+    _render(container, d) {
+        const kd = d.kd || (d.kills != null && d.deaths != null ? (d.kills / Math.max(d.deaths, 1)).toFixed(2) : '—');
+        const hs = d.hs != null ? `${d.hs}%` : '—';
+        const playtime = d.playtime ? `${Math.round(d.playtime / 60)}ч` : '—';
+        const lastSeen = d.last_seen ? new Date(d.last_seen).toLocaleDateString('ru-RU') : (d.last_logoff ? new Date(d.last_logoff).toLocaleDateString('ru-RU') : '—');
+        const reg = d.timecreated ? new Date(d.timecreated).toLocaleDateString('ru-RU') : '—';
+        const name = d.fear_name || d.steam_name || d.steamid;
+        const avatar = d.fear_avatar || d.steam_avatar || '';
+        const group = d.fear_group ? `<span style="background:rgba(168,85,247,.2);color:var(--purple);padding:2px 8px;border-radius:4px;font-size:11px;margin-left:6px">${escapeHtml(d.fear_group)}</span>` : '';
+        const online = d.steam_status > 0 ? `<span style="color:var(--green)">● В сети${d.steam_game ? ' · ' + escapeHtml(d.steam_game) : ''}</span>` : `<span style="color:var(--t3)">● Офлайн</span>`;
+        const vacBanned = d.vac?.VACBanned ? `<span style="color:#ff5050;font-weight:700;margin-left:8px">⚠ VAC БАН (${d.vac.NumberOfVACBans})</span>` : '';
+        const profilePublic = d.profile_state === 3;
+
+        const stats = [
+            ['K/D', kd, d.kills != null ? `(${d.kills}/${d.deaths})` : ''],
+            ['HS%', hs, ''],
+            ['Наиграно', playtime, ''],
+            ['Последний вход', lastSeen, ''],
+            ['Регистрация', reg, ''],
+            ['Steam Lvl', d.steam_level ?? '—', ''],
+            ['Друзья', d.friends_count ?? '—', ''],
+            ['Профиль', profilePublic ? '<span style="color:var(--green)">Публичный</span>' : '<span style="color:#ff5050">Закрытый</span>', ''],
+        ];
+
+        container.innerHTML = `
+            <div style="display:flex;gap:14px;align-items:center;padding:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:16px">
+                ${avatar ? `<img src="${escapeHtml(avatar)}" style="width:56px;height:56px;border-radius:50%;flex-shrink:0">` : `<div style="width:56px;height:56px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:24px">👤</div>`}
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:17px;font-weight:700">${escapeHtml(name)}${group}</div>
+                    <div style="font-size:12px;color:var(--t3);margin:3px 0;cursor:pointer" onclick="App.copyToClipboard('${escapeHtml(d.steamid)}')">${escapeHtml(d.steamid)} 📋</div>
+                    <div style="font-size:12px">${online}${vacBanned}</div>
+                </div>
+                <div style="display:flex;gap:8px;flex-shrink:0">
+                    <button onclick="App.openSteamProfile('${escapeHtml(d.steamid)}')" style="padding:7px 14px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--t2);cursor:pointer;font-size:12px">Steam</button>
+                    <button onclick="App.openFearProfile('${escapeHtml(d.steamid)}')" style="padding:7px 14px;background:rgba(168,85,247,.15);border:1px solid rgba(168,85,247,.3);border-radius:8px;color:var(--purple);cursor:pointer;font-size:12px">Fear</button>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                ${stats.map(([label, val, sub]) => `
+                    <div style="padding:12px;background:var(--card);border:1px solid var(--border);border-radius:10px;text-align:center">
+                        <div style="font-size:11px;color:var(--t3);margin-bottom:5px">${label}</div>
+                        <div style="font-size:16px;font-weight:700">${val}</div>
+                        ${sub ? `<div style="font-size:10px;color:var(--t3);margin-top:2px">${sub}</div>` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    },
+};
+
+// ── SPLASH ───────────────────────────────────
+const Splash = {
+    _el:    () => document.getElementById('splash-screen'),
+    _bar:   () => document.getElementById('splash-bar'),
+    _status:() => document.getElementById('splash-status'),
+
+    setStatus(text, pct) {
+        const s = this._status(); if (s) s.textContent = text;
+        const b = this._bar();   if (b && pct !== undefined) b.style.width = pct + '%';
+    },
+
+    hide() {
+        const el = this._el();
+        if (el) {
+            el.classList.add('hidden');
+            setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 450);
+        }
+    },
+};
+
+// ── SERVERS MANAGER ──────────────────────────
+const ServersManager = {
+    _open: false,
+    _activeMode: 'public',
+
+    open() {
+        this._open = true;
+        this._render();
+    },
+
+    setMode(mode, btn) {
+        this._activeMode = mode;
+        document.querySelectorAll('.srv-mode-btn').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        this._render();
+    },
+
+    toggleCsgo(btn) {
+        CsgoManager.showInServers = !CsgoManager.showInServers;
+        try { localStorage.setItem('fearsearch_csgo_show', CsgoManager.showInServers ? '1' : '0'); } catch {}
+        btn.classList.toggle('active', CsgoManager.showInServers);
+        this._render();
+    },
+
+    tick(servers) {
+        const online = (servers || []).reduce((s, srv) => s + (srv.live_data?.players?.length || 0), 0);
+        const badge = document.getElementById('servers-online-badge');
+        if (badge) badge.textContent = online;
+        if (this._open) this._render();
+    },
+
+    _getMode(srv) {
+        const name = (srv.site_name || srv.name || '').toLowerCase();
+        if (name.includes('awp') || name.includes('lego')) return 'awp';
+        if (name.includes('minion') || name.includes('mini-game')) return 'minions';
+        if (name.includes('old ') || name.includes('cs 1.6') || name.includes('cs1.6')) return 'cs16';
+        if (name.includes('fps')) return 'fps';
+        return 'public';
+    },
+
+    _getMapGroup(srv) {
+        const map = (srv.live_data?.map_name || srv.map || '').toLowerCase();
+        const name = (srv.site_name || srv.name || '').toLowerCase();
+        // Lake и Cache → OTHER
+        if (map.includes('lake') || map.includes('cache') || name.includes('lake') || name.includes('cache')) return 'OTHER';
+        if (name.includes('random')) return 'RANDOM GAME';
+        if (name.includes('sandstone')) return 'SANDSTONE';
+        if (name.includes('dust2') || name.includes('dust 2') || map.includes('dust2')) return 'DUST2';
+        if (name.includes('mirage') || map.includes('mirage') || map.includes('nirage')) return 'MIRAGE';
+        if (name.includes('awp') || name.includes('lego')) return 'AWP LEGO';
+        if (name.includes('minion')) return 'MINI-GAMES AND OTHER';
+        if (name.includes('old ') || name.includes('cs 1.6') || map.includes('cs16')) return 'CS 1.6';
+        if (name.includes('fps')) return 'FPS+';
+        return 'OTHER';
+    },
+
+    _render() {
+        const layout = document.getElementById('servers-layout');
+        if (!layout) return;
+        if (!serversData || !serversData.length) {
+            layout.innerHTML = `<div class="empty"><span class="empty-emoji">🖥️</span><p>Нет данных о серверах</p></div>`;
+            return;
+        }
+
+        const filtered = this._activeMode === 'all' ? serversData : serversData.filter(srv => this._getMode(srv) === this._activeMode);
+        const groups = {};
+        for (const srv of filtered) {
+            const key = this._getMapGroup(srv);
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(srv);
+        }
+
+        const ORDER = ['RANDOM GAME','MIRAGE','DUST2','SANDSTONE','CS 1.6','FPS+','AWP LEGO','MINI-GAMES AND OTHER','OTHER'];
+        const sortedGroups = Object.entries(groups).sort((a,b) => {
+            const ia = ORDER.indexOf(a[0]), ib = ORDER.indexOf(b[0]);
+            if (ia === -1 && ib === -1) return a[0].localeCompare(b[0]);
+            if (ia === -1) return 1; if (ib === -1) return -1;
+            return ia - ib;
+        });
+
+        const modes = [
+            { id: 'all', label: 'Все режимы' },
+            { id: 'public', label: 'Public' },
+            { id: 'awp', label: 'AWP' },
+            { id: 'cs16', label: 'CS:GO' },
+            { id: 'minions', label: 'Minions' },
+        ];
+
+        const csgoEnabled = CsgoManager.showInServers !== false;
+        layout.innerHTML = `<div class="srv-modes">${modes.map(m =>
+            `<button class="srv-mode-btn ${this._activeMode === m.id ? 'active' : ''}" onclick="ServersManager.setMode('${m.id}', this)">${m.label}</button>`
+        ).join('')}<button class="srv-mode-btn ${csgoEnabled ? 'active' : ''}" style="margin-left:auto" onclick="ServersManager.toggleCsgo(this)">🎮 CS:GO серверы</button></div>`;
+
+        for (const [groupName, servers] of sortedGroups) {
+            const totalOnline = servers.reduce((s, srv) => s + (srv.live_data?.players?.length || 0), 0);
+            const section = document.createElement('div');
+            section.className = 'srv-section';
+            section.innerHTML = `
+                <div class="srv-section-title">${escapeHtml(groupName)}<span class="srv-section-count ${totalOnline > 0 ? 'online' : ''}">${totalOnline} ●</span></div>
+                <div class="srv-grid"></div>
+            `;
+            layout.appendChild(section);
+            const grid = section.querySelector('.srv-grid');
+            for (const srv of servers) {
+                const players = srv.live_data?.players || [];
+                const maxPlayers = srv.live_data?.max_players || srv.max_players || 0;
+                const map = srv.live_data?.map_name || srv.map || '';
+                const ping = srv.live_data?.ping || srv.ping || 0;
+                const addr = `${srv.ip}:${srv.port}`;
+                const name = srv.site_name || srv.name || addr;
+                const card = document.createElement('div');
+                card.className = `srv-card ${players.length > 0 ? 'has-players' : ''}`;
+                card.style.backgroundImage = `url(https://fearproject.ru/img/maps/${map}.jpg)`;
+                card.onclick = () => ServersManager.showModal(srv);
+                card.innerHTML = `
+                    <div class="srv-card-overlay"></div>
+                    <div class="srv-card-content">
+                        <div class="srv-card-name">${escapeHtml(name)}</div>
+                        <div class="srv-card-meta">
+                            <span class="srv-players ${players.length > 0 ? 'online' : ''}">${players.length} / ${maxPlayers}</span>
+                            <span class="srv-map">${escapeHtml(map)}</span>
+                            <span class="srv-ping">${ping} мс</span>
+                        </div>
+                    </div>
+                    <div class="srv-card-actions">
+                        <button class="srv-btn-play" onclick="event.stopPropagation();App.connectToServer('${escapeHtml(addr)}')">▶</button>
+                        <button class="srv-btn-copy" onclick="event.stopPropagation();App.copyToClipboard('connect ${escapeHtml(addr)}')">📋</button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            }
+        }
+
+        // CSGO серверы (если включено)
+        if (CsgoManager.showInServers && CsgoManager.data.length > 0) {
+            const csgoSection = document.createElement('div');
+            csgoSection.className = 'srv-section';
+            const csgoOnline = CsgoManager.data.filter(s => CsgoManager.enabled[s.id]).reduce((s, srv) => s + (srv.playerCount || 0), 0);
+            csgoSection.innerHTML = `<div class="srv-section-title">🎮 CS:GO<span class="srv-section-count ${csgoOnline > 0 ? 'online' : ''}">${csgoOnline} ●</span></div><div class="srv-grid"></div>`;
+            layout.appendChild(csgoSection);
+            const csgoGrid = csgoSection.querySelector('.srv-grid');
+            for (const srv of CsgoManager.data.filter(s => CsgoManager.enabled[s.id])) {
+                const card = document.createElement('div');
+                card.className = 'srv-card';
+                card.innerHTML = `
+                    <div class="srv-card-header">
+                        <div class="srv-card-name">${escapeHtml(srv.serverName || srv.name)}</div>
+                        <span class="game-tag csgo">CS:GO</span>
+                    </div>
+                    <div class="srv-card-meta">
+                        <span class="srv-players ${(srv.playerCount||0) > 0 ? 'online' : ''}">${srv.playerCount||0} / ${srv.maxPlayers||0}</span>
+                        <span class="srv-map">${escapeHtml(srv.map||'')}</span>
+                    </div>
+                    <div class="srv-card-actions">
+                        <button class="srv-btn-play" onclick="App.connectToServer('${escapeHtml(srv.ip+':'+srv.port)}')">▶</button>
+                        <button class="srv-btn-copy" onclick="App.copyToClipboard('connect ${escapeHtml(srv.ip+':'+srv.port)}')">📋</button>
+                    </div>
+                `;
+                csgoGrid.appendChild(card);
+            }
+        }
+    },
+
+    showModal(srv) {
+        const modal = document.getElementById('server-modal');
+        const content = document.getElementById('server-modal-content');
+        if (!modal || !content) return;
+
+        const players = srv.live_data?.players || [];
+        const map = srv.live_data?.map_name || srv.map || '';
+        const addr = `${srv.ip}:${srv.port}`;
+        const name = srv.site_name || srv.name || addr;
+        const ping = srv.live_data?.ping || srv.ping || srv.live_data?.server_ping || 0;
+        const maxPlayers = srv.live_data?.max_players || srv.max_players || 0;
+        const scoreT = srv.live_data?.score_t ?? srv.live_data?.score?.t ?? null;
+        const scoreCT = srv.live_data?.score_ct ?? srv.live_data?.score?.ct ?? null;
+        const scoreHtml = (scoreT !== null && scoreCT !== null)
+            ? `<div class="srv-modal-score">${scoreT} : ${scoreCT}</div>`
+            : '';
+
+        const tPlayers = players.filter(p => p.team === 't');
+        const ctPlayers = players.filter(p => p.team === 'ct');
+        const specPlayers = players.filter(p => p.team !== 't' && p.team !== 'ct');
+
+        const renderPlayer = (p) => {
+            const isAdmin = StaffManager.adminMap[p.steam_id] || PaidManager.admins?.find(a => a.steamid === p.steam_id);
+            const customNick = getCustomNick(p.steam_id);
+            const displayName = customNick || p.nickname;
+            const adminBadge = isAdmin ? `<span class="srv-admin-badge">Админ</span>` : '';
+            return `
+                <div class="srv-player-row" onclick="App.openFearProfile('${escapeHtml(p.steam_id)}')">
+                    <img src="${escapeHtml(p.avatar || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg')}"
+                         class="srv-player-avatar" loading="lazy"
+                         onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
+                    <span class="srv-player-name">${escapeHtml(displayName)} ${adminBadge}</span>
+                    <span class="srv-player-kd">✂ ${p.kills} ☠ ${p.deaths}</span>
+                </div>
+            `;
+        };
+
+        content.innerHTML = `
+            <div class="srv-modal-bg" style="background-image:url(https://fearproject.ru/img/maps/${map}.jpg)"></div>
+            <button class="srv-modal-close" onclick="ServersManager.closeModal()">✕</button>
+            <div class="srv-modal-header">
+                <div class="srv-modal-name">${escapeHtml(name)}</div>
+                ${scoreHtml}
+                <div class="srv-modal-meta">${players.length} / ${maxPlayers} · Public · ${ping > 0 ? ping + ' мс' : '—'}</div>
+            </div>
+            <div class="srv-modal-teams">
+                <div class="srv-team">
+                    <div class="srv-team-title">
+                        <span class="srv-team-icon t">🔴</span> Террористы
+                        <span class="srv-team-count">${tPlayers.length}/5</span>
+                    </div>
+                    ${tPlayers.map(renderPlayer).join('') || '<div class="srv-slot-empty">Слот пустой</div>'}
+                </div>
+                <div class="srv-team">
+                    <div class="srv-team-title">
+                        <span class="srv-team-icon ct">🔵</span> Спецназ
+                        <span class="srv-team-count">${ctPlayers.length}/5</span>
+                    </div>
+                    ${ctPlayers.map(renderPlayer).join('') || '<div class="srv-slot-empty">Слот пустой</div>'}
+                </div>
+            </div>
+            ${specPlayers.length ? `
+                <div class="srv-spec-section">
+                    <div class="srv-spec-title">👁 Наблюдатели</div>
+                    ${specPlayers.map(renderPlayer).join('')}
+                </div>
+            ` : ''}
+            <button class="srv-modal-connect" onclick="App.connectToServer('${escapeHtml(addr)}')">▶ Подключиться к серверу</button>
+            <div class="srv-modal-addr" onclick="App.copyToClipboard('${escapeHtml(addr)}')">${escapeHtml(addr)} 📋</div>
+        `;
+
+        modal.style.display = 'flex';
+    },
+
+    closeModal() {
+        const m = document.getElementById('server-modal');
+        if (m) m.style.display = 'none';
+    },
+};
+
+document.addEventListener('DOMContentLoaded', async () => {
     ParticlesSystem.init();
     SettingsPanel.restore();
     Sidebar.restore();
+    EasterEgg.init();
+    CheckerManager.init();
+    App.setupEventListeners();
+    App.setupTabs();
+
+    // Версия
+    if (window.electronAPI?.getVersion) {
+        window.electronAPI.getVersion().then(v => {
+            const el = document.getElementById('app-version');
+            if (el) el.textContent = `v${v}`;
+        }).catch(() => {});
+    }
+
+    // ── Подписываемся на обновления ──
+    if (window.electronAPI?.onUpdateStatus) {
+        window.electronAPI.onUpdateStatus((data) => {
+            if (data.type === 'available') {
+                // Показываем экран обновления поверх сплэша
+                const s = document.getElementById('update-screen');
+                const v = document.getElementById('update-version-text');
+                const d = document.getElementById('update-desc');
+                if (s) s.style.display = 'flex';
+                if (v) v.textContent = `Версия ${data.version}`;
+                if (d) d.textContent = '⬇️ Скачиваем обновление...';
+                // Обновляем статус сплэша
+                Splash.setStatus(`Доступно обновление ${data.version}...`, 30);
+            } else if (data.type === 'not-available') {
+                Splash.setStatus('Обновлений нет', 40);
+            } else if (data.type === 'downloaded') {
+                const btn = document.getElementById('update-btn');
+                const pt  = document.getElementById('update-progress-text');
+                const pf  = document.getElementById('update-progress-fill');
+                if (pf) pf.style.width = '100%';
+                if (pt) pt.textContent = '✅ Скачано! Устанавливаем...';
+                if (btn) btn.style.display = 'block';
+                setTimeout(() => window.electronAPI.installUpdate(), 3000);
+            }
+        });
+
+        window.electronAPI.onDownloadProgress?.((data) => {
+            const pf = document.getElementById('update-progress-fill');
+            const pt = document.getElementById('update-progress-text');
+            if (pf) pf.style.width = data.pct + '%';
+            if (pt) pt.textContent = `⬇️ ${data.mbDone} МБ / ${data.mbTotal} МБ · ${data.kbps} КБ/с · ${data.pct}%`;
+        });
+    }
+
+    // ── Splash: проверка обновлений → авторизация → загрузка всего → скрыть ──
+    Splash.setStatus('Проверяем обновления...', 10);
+    await new Promise(r => setTimeout(r, 500));
+
+    Splash.setStatus('Авторизация...', 25);
+    let authed = false;
+    try {
+        authed = await AuthManager.init();
+    } catch {}
+
+    if (authed) {
+        const splashStart = Date.now();
+
+        Splash.setStatus('Загружаем стафф...', 40);
+        await StaffManager.load().catch(() => {});
+        TrackedManager.render();
+        TrackedManager.renderLog();
+        TrackedManager.updateBadge();
+
+        Splash.setStatus('Загружаем серверы...', 60);
+        serversData = await DataManager.fetchServers().catch(() => []);
+
+        Splash.setStatus('Загружаем игроков...', 80);
+        allPlayers = DataManager.processPlayersQuick(serversData);
+        App.renderColumns();
+        App.updateStats();
+        App.filterPlayers();
+
+        // Минимум 3 секунды на splash
+        const elapsed = Date.now() - splashStart;
+        if (elapsed < 3000) await new Promise(r => setTimeout(r, 3000 - elapsed));
+
+        Splash.setStatus('Готово!', 100);
+        await new Promise(r => setTimeout(r, 400));
+        Splash.hide();
+
+        // Steam API + полное обновление в фоне
+        DataManager.processPlayersSteam(serversData).then(players => {
+            allPlayers = players;
+            App.renderColumns();
+            App.updateStats();
+            App.filterPlayers();
+            TrackedManager.tick(allPlayers);
+            StaffManager.tick(allPlayers);
+            PaidManager.tick(allPlayers);
+            App._reportSeenAdmins(allPlayers);
+            const el = document.getElementById('last-update');
+            if (el) el.textContent = new Date().toLocaleTimeString('ru-RU');
+        }).catch(() => {});
+
+        App.startAutoUpdate();
+    } else {
+        Splash.setStatus('Требуется авторизация', 100);
+        await new Promise(r => setTimeout(r, 300));
+        Splash.hide();
+        AuthManager.showGate(true);
+    }
 });
+
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) { App.stopAutoUpdate(); BansManager.stopAuto(); }
     else {
         App.startAutoUpdate(); App.updateData();
-        // Если вкладка баны активна — возобновляем
         if (document.querySelector('.sidebar-nav-item[data-tab="bans"]')?.classList.contains('active')) {
             BansManager.startAuto();
         }
