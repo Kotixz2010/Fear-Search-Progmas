@@ -2369,17 +2369,8 @@ const StaffStatsManager = {
         const recAuthor = document.getElementById('staff-record-author');
         if (recCount) recCount.textContent = STAFF_RECORD.count;
         if (recAuthor) recAuthor.textContent = STAFF_RECORD.author;
-        // Инициализируем MonthDropdown — ищем контейнер в активном DOM
-        const container = document.querySelector('#norma-combined-body') ||
-                          document.getElementById('tab-staffstats');
-        if (container) {
-            this._dropdown?.destroy();
-            this._dropdown = new MonthDropdown(container, (monthKey) => {
-                this._selectedMonth = monthKey;
-                this._render();
-            });
-        }
-        if (this._loaded) { this._render(); return; }
+
+        if (this._loaded) { this._buildDropdown(); this._initDropdown(); this._render(); return; }
         // Пробуем загрузить из localStorage кеша
         try {
             const cached = localStorage.getItem('fs_staffstats_cache');
@@ -2389,6 +2380,7 @@ const StaffStatsManager = {
                 this._loaded = true;
                 this._buildMonths();
                 this._buildDropdown();
+                this._initDropdown();
                 this._render();
                 // Показываем кеш сразу, потом тихо обновляем в фоне
                 const age = Date.now() - (parsed.savedAt || 0);
@@ -2486,6 +2478,7 @@ const StaffStatsManager = {
 
         this._buildMonths();
         this._buildDropdown();
+        this._initDropdown();
         this._render();
     },
 
@@ -2645,11 +2638,21 @@ const StaffStatsManager = {
         if (label) label.innerHTML = `${cur.label} <span style="color:rgba(168,85,247,.8)">(${cur.count})</span>`;
     },
 
+    _initDropdown() {
+        // Инициализируем MonthDropdown ПОСЛЕ того как _buildDropdown() заполнил DOM
+        const container = document.querySelector('#norma-combined-body') ||
+                          document.getElementById('tab-staffstats');
+        if (!container) return;
+        const selectEl = container.querySelector('[data-role="month-select"]');
+        if (!selectEl) return;
+        this._dropdown?.destroy();
+        this._dropdown = new MonthDropdown(container, (monthKey) => {
+            this._selectedMonth = monthKey;
+            this._render();
+        });
+    },
+
     toggleDropdown(triggerEl) {
-        if (this._dropdown) {
-            this._dropdown.toggle();
-            return;
-        }
         // Fallback — scoped поиск если _dropdown ещё не инициализирован
         const select = triggerEl?.closest('[data-role="month-select"]') ||
                        document.querySelector('#tab-staffstats [data-role="month-select"]') ||
@@ -2778,15 +2781,9 @@ const StaffStatsManager = {
         const isRemoved = (p) => p.status === 2;
         const removed = [...allBans, ...allMutes].filter(isRemoved).length;
 
-        // С апреля 2026 снятые вычитаются из общего счёта
-        const DEDUCT_FROM = new Date('2026-04-01').getTime();
-        const periodStart = this._selectedMonth
-            ? new Date(this._selectedMonth.split('-')[0], this._selectedMonth.split('-')[1] - 1, 1).getTime()
-            : 0;
-        const deductRemoved = periodStart >= DEDUCT_FROM || (!this._selectedMonth && true);
-
-        const bans  = deductRemoved ? allBans.filter(p => !isRemoved(p)).length  : allBans.length;
-        const mutes = deductRemoved ? allMutes.filter(p => !isRemoved(p)).length : allMutes.length;
+        // Снятые всегда вычитаются из общего счёта
+        const bans  = allBans.filter(p => !isRemoved(p)).length;
+        const mutes = allMutes.filter(p => !isRemoved(p)).length;
         return { bans, mutes, removed, total: bans + mutes };
     },
 
@@ -2811,16 +2808,6 @@ const StaffStatsManager = {
 
         const maxTotal = rows[0]?.total || 1;
 
-        // Рекорд среди стаффа за выбранный период
-        const topRow = rows[0];
-        const recordKey = 'fs_staff_record_' + (this._selectedMonth || 'all');
-        const savedStaffRecord = (() => { try { return JSON.parse(localStorage.getItem(recordKey) || 'null'); } catch { return null; } })();
-        if (topRow && topRow.total > 0 && (!savedStaffRecord || topRow.total > savedStaffRecord.count)) {
-            const newRec = { count: topRow.total, name: topRow.name, steamid: topRow.steamid, month: this._selectedMonth || 'all' };
-            try { localStorage.setItem(recordKey, JSON.stringify(newRec)); } catch {}
-        }
-        const staffRecord = (() => { try { return JSON.parse(localStorage.getItem(recordKey) || 'null'); } catch { return null; } })();
-
         let html = `<div class="ss-row ss-row-header">
             <span>#</span><span></span><span>Стафф</span>
             <span style="text-align:center">Баны</span>
@@ -2828,9 +2815,6 @@ const StaffStatsManager = {
             <span style="text-align:center">Снятые</span>
             <span style="text-align:center">Всего</span>
         </div>`;
-        if (staffRecord) {
-            html = `<div class="bans-stat-record" style="margin-bottom:8px">🏆 Рекорд стаффа: <b>${staffRecord.count}</b> нак. · ${escapeHtml(staffRecord.name)}</div>` + html;
-        }
 
         rows.forEach((m, i) => {
             const rank = i + 1;
