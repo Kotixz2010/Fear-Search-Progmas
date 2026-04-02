@@ -1727,12 +1727,10 @@ body {
    ═══════════════════════════════════════════ */
 
 .staffstats-layout {
-    padding: 16px 20px;
+    padding: 16px 20px 40px;
     display: flex;
     flex-direction: column;
     gap: 14px;
-    min-height: 100%;
-    overflow-y: auto;
     box-sizing: border-box;
 }
 
