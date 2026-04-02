@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -10,9 +10,33 @@
 </head>
 <body>
 
+    <!-- SPLASH SCREEN -->
+    <div id="splash-screen">
+        <div class="splash-inner">
+            <div class="splash-ghost">👻</div>
+            <div class="splash-logo">Fear<span>Search</span></div>
+            <div class="splash-status" id="splash-status">Запуск...</div>
+            <div class="splash-bar-wrap">
+                <div class="splash-bar" id="splash-bar"></div>
+            </div>
+        </div>
+    </div>
+
     <canvas id="bg-canvas"></canvas>
     <canvas id="particles-canvas"></canvas>
     <div id="bg-gif"></div>
+
+    <!-- FROZEN SCREEN -->
+    <div id="frozen-screen" style="display:none">
+        <div class="update-card" style="border-color:rgba(0,240,255,.3)">
+            <div class="update-logo">❄️</div>
+            <div class="update-title" style="color:var(--cyan)">Права заморожены</div>
+            <div class="update-version" id="frozen-name" style="border-color:rgba(0,240,255,.3);background:rgba(0,240,255,.08);color:var(--cyan)"></div>
+            <div class="update-desc">Ваши права администратора заморожены.<br>Использование программы недоступно до разморозки.</div>
+            <div class="update-note" style="color:var(--t2)">Обратитесь к руководству fearproject.ru</div>
+            <button class="update-btn" style="background:linear-gradient(135deg,#00f0ff,#3d8fff)" onclick="AuthManager.logout()">Выйти из аккаунта</button>
+        </div>
+    </div>
 
     <!-- UPDATE SCREEN — блокирует программу при наличии обновления -->
     <div id="update-screen" style="display:none">
@@ -20,15 +44,15 @@
             <div class="update-logo">👻</div>
             <div class="update-title">Доступно обновление</div>
             <div class="update-version" id="update-version-text">Версия x.x.x</div>
-            <div class="update-desc">Необходимо обновить FearSearch для продолжения работы</div>
-            <div class="update-progress-wrap" id="update-progress-wrap" style="display:none">
+            <div class="update-desc" id="update-desc">Скачиваем обновление...</div>
+            <div class="update-progress-wrap" id="update-progress-wrap">
                 <div class="update-progress-bar">
                     <div class="update-progress-fill" id="update-progress-fill"></div>
                 </div>
-                <div class="update-progress-text" id="update-progress-text">Загрузка...</div>
+                <div class="update-progress-text" id="update-progress-text">Подготовка...</div>
             </div>
-            <button class="update-btn" id="update-btn" onclick="window.electronAPI.installUpdate()">
-                ⬇️ Скачать и установить
+            <button class="update-btn" id="update-btn" style="display:none" onclick="window.electronAPI.installUpdate()">
+                ✅ Установить и перезапустить
             </button>
             <div class="update-note">Программа перезапустится автоматически</div>
         </div>
@@ -84,32 +108,44 @@
         </div>
 
         <nav class="sidebar-nav">
+            <button class="sidebar-nav-item" data-tab="servers">
+                <span class="snav-icon">🖥️</span>
+                <span class="snav-label">Серверы</span>
+                <span class="snav-badge" id="servers-online-badge">0</span>
+            </button>
             <button class="sidebar-nav-item active" data-tab="main">
                 <span class="snav-icon">🎮</span>
                 <span class="snav-label">Игроки</span>
             </button>
-            <button class="sidebar-nav-item" data-tab="staff">
-                <span class="snav-icon">👮</span>
-                <span class="snav-label">Стафф</span>
-                <span class="snav-badge" id="staff-online-badge">0</span>
-            </button>
-            <button class="sidebar-nav-item" data-tab="paid">
-                <span class="snav-icon">💰</span>
-                <span class="snav-label">Покупные</span>
-                <span class="snav-badge" id="paid-online-badge">0</span>
+            <button class="sidebar-nav-item" data-tab="reports">
+                <span class="snav-icon">🚨</span>
+                <span class="snav-label">Репорты</span>
+                <span class="snav-badge" id="reports-badge" style="display:none">0</span>
             </button>
             <button class="sidebar-nav-item" data-tab="tracked">
                 <span class="snav-icon">👁</span>
                 <span class="snav-label">Отслеживаемые</span>
                 <span class="snav-badge" id="tracked-badge">0</span>
             </button>
-            <button class="sidebar-nav-item" data-tab="bans">
-                <span class="snav-icon">🔨</span>
-                <span class="snav-label">Баны</span>
+            <button class="sidebar-nav-item" data-tab="checker">
+                <span class="snav-icon">🔍</span>
+                <span class="snav-label">Чекер банов</span>
             </button>
-            <button class="sidebar-nav-item" data-tab="staffstats">
-                <span class="snav-icon">📊</span>
-                <span class="snav-label">Статистика стаффа</span>
+            <!-- Норма + Статистика стаффа в одной вкладке -->
+            <button class="sidebar-nav-item" data-tab="norma-combined">
+                <span class="snav-icon">📋</span>
+                <span class="snav-label">Норма</span>
+            </button>
+            <!-- Стафф + Покупные в одной вкладке -->
+            <button class="sidebar-nav-item" data-tab="staff-combined">
+                <span class="snav-icon">👮</span>
+                <span class="snav-label">Стафф</span>
+                <span class="snav-badge" id="staff-online-badge">0</span>
+            </button>
+            <button class="sidebar-nav-item" data-tab="pubchecker" id="nav-pubchecker" style="display:none">
+                <span class="snav-icon">🌐</span>
+                <span class="snav-label">Паблик баны</span>
+                <span class="snav-badge" id="pubchecker-badge" style="display:none">0</span>
             </button>
         </nav>
 
@@ -124,13 +160,13 @@
             </div>
             <div id="auth-logged-out" style="display:none"></div>
             <div class="sidebar-actions">
-                <button class="sidebar-action-btn" id="toggle-autoupdate" title="Пауза">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                    <span class="snav-label">Пауза</span>
+                <button class="sidebar-action-btn sidebar-collapse-btn" onclick="App.toggleSidebar()" title="Скрыть сайдбар">
+                    ◀ <span class="snav-label">Скрыть</span>
                 </button>
                 <button class="sidebar-action-btn" onclick="SettingsPanel.toggle()" title="Настройки">
                     ⚙️ <span class="snav-label">Настройки</span>
                 </button>
+                <div class="sidebar-version snav-label" id="app-version"></div>
             </div>
         </div>
     </aside>
@@ -273,6 +309,10 @@
                     <label class="toggler" id="toggle-unconfigured">
                         <div class="toggler-track active"></div>
                         <span>Ненастроенные</span>
+                    </label>
+                    <label class="toggler" id="toggle-csgo-players" onclick="App.toggleCsgoPlayers(this)">
+                        <div class="toggler-track active"></div>
+                        <span>CS:GO игроки</span>
                     </label>
                     <div class="searchbar">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -417,14 +457,182 @@
                 <div class="ss-progress-bar"><div class="ss-progress-fill" id="ss-progress-fill"></div></div>
                 <div class="ss-progress-text" id="ss-progress-text">Загрузка...</div>
             </div>
+            <div class="staff-record-block">
+                <span class="staff-record-icon">🏆</span>
+                <span class="staff-record-text">Рекорд: <strong id="staff-record-count">810</strong> наказаний — <strong id="staff-record-author">молочныйРейдизан</strong></span>
+            </div>
             <div id="staffstats-list" class="staffstats-list">
                 <div class="empty"><span class="empty-emoji">📊</span><p>Открой вкладку чтобы загрузить статистику</p></div>
             </div>
         </div>
     </div>
 
+    <!-- CHECKER TAB -->
+    <div class="tab-content" id="tab-checker">
+        <div class="checker-layout">
+            <div class="checker-header">
+                <div class="checker-title">🔍 Чекер банов</div>
+                <div class="checker-controls">
+                    <label class="checker-upload-btn" for="checker-file-input">
+                        📁 Загрузить config.vdf
+                        <input type="file" id="checker-file-input" accept=".vdf,.txt" style="display:none">
+                    </label>
+                    <input type="text" id="checker-manual-input" class="checker-input" placeholder="или введи SteamID вручную...">
+                    <button class="checker-check-btn" onclick="CheckerManager.checkManual()">Проверить</button>
+                    <button class="checker-clear-btn" onclick="CheckerManager.clear()">Очистить</button>
+                </div>
+                <div class="checker-stats-row" id="checker-stats-row" style="display:none">
+                    <span class="checker-stat clean">✅ <span id="checker-stat-clean">0</span> чистых</span>
+                    <span class="checker-stat banned">🔨 <span id="checker-stat-banned">0</span> забанено</span>
+                    <span class="checker-stat noreg">❓ <span id="checker-stat-noreg">0</span> не зарег.</span>
+                    <span class="checker-stat total">📋 <span id="checker-stat-total">0</span> всего</span>
+                </div>
+            </div>
+            <div id="checker-progress" class="checker-progress-wrap" style="display:none">
+                <div class="checker-progress-bar"><div class="checker-progress-fill" id="checker-progress-fill"></div></div>
+                <div class="checker-progress-text" id="checker-progress-text">Проверяем...</div>
+            </div>
+            <div id="checker-list" class="checker-list">
+                <div class="empty"><span class="empty-emoji">🔍</span><p>Загрузи config.vdf или введи SteamID</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PUBCHECKER TAB -->
+    <div class="tab-content" id="tab-pubchecker">
+        <div class="pubchecker-layout">
+            <div class="pubchecker-header">
+                <div class="pubchecker-title">🌐 Паблик баны</div>
+                <div class="pubchecker-controls">
+                    <div class="pubchecker-sources" id="pubchecker-sources">
+                        <button class="pub-src-btn active" data-src="yooma" onclick="PubChecker.toggleSource('yooma', this)">yooma.su</button>
+                        <button class="pub-src-btn" data-src="cs2red" onclick="PubChecker.toggleSource('cs2red', this)">cs2red.ru</button>
+                    </div>
+                    <button class="pubchecker-refresh-btn" onclick="PubChecker.refresh()">🔄 Обновить</button>
+                    <button class="pubchecker-refresh-btn" onclick="PubChecker.refreshCache()" style="margin-left:4px" title="Обновить кеш банов yooma">🔃 Обновить кеш</button>
+                </div>
+                <div class="pubchecker-stats-row" id="pubchecker-stats-row" style="display:none">
+                    <span class="pub-stat">🔨 <span id="pub-stat-banned">0</span> забанено</span>
+                    <span class="pub-stat">👥 <span id="pub-stat-total">0</span> игроков</span>
+                    <span class="pub-stat updated">🕐 <span id="pub-stat-updated">—</span></span>
+                </div>
+            </div>
+            <div id="pubchecker-progress" class="pubchecker-progress-wrap" style="display:none">
+                <div class="pubchecker-progress-bar"><div class="pubchecker-progress-fill" id="pubchecker-progress-fill"></div></div>
+                <div class="pubchecker-progress-text" id="pubchecker-progress-text">Проверяем...</div>
+            </div>
+            <div id="pubchecker-list" class="pubchecker-list">
+                <div class="empty"><span class="empty-emoji">🌐</span><p>Открой вкладку чтобы начать проверку</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- REPORTS TAB -->
+    <div class="tab-content" id="tab-reports">
+        <div class="reports-layout">
+            <div class="reports-header">
+                <div class="reports-title">🚨 Репорты</div>
+                <div class="reports-tabs">
+                    <button class="rep-tab-btn active" data-reptab="new" onclick="ReportsManager.switchTab('new', this)">Новые</button>
+                    <button class="rep-tab-btn" data-reptab="open" onclick="ReportsManager.switchTab('open', this)">Открытые</button>
+                </div>
+                <button class="reports-refresh-btn" onclick="ReportsManager.refresh()">🔄 Обновить</button>
+                <button class="rep-btn-close-offline" id="rep-close-offline-btn" style="display:none" onclick="ReportsManager.closeOfflineConfirm()">🔴 Закрыть офлайн</button>
+                <button class="rep-btn-auto-toggle" id="rep-auto-toggle-btn" style="display:none" onclick="ReportsManager.toggleAutoClose()">⚙️ Авто: выкл</button>
+                <button class="rep-btn-auto-toggle" id="rep-settings-btn" style="display:none" onclick="ReportsManager.showSettings()" title="Настройки авто-закрытия">🔧</button>
+            </div>
+            <div id="reports-progress" class="reports-progress-wrap" style="display:none">
+                <div class="reports-progress-bar"><div class="reports-progress-fill" id="reports-progress-fill"></div></div>
+                <div class="reports-progress-text" id="reports-progress-text">Загрузка...</div>
+            </div>
+            <div id="reports-list" class="reports-list">
+                <div class="empty"><span class="empty-emoji">🚨</span><p>Открой вкладку чтобы загрузить репорты</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- REPORTS DETAIL MODAL -->
+    <div id="reports-modal" class="reports-modal" style="display:none">
+        <div class="reports-modal-overlay" onclick="ReportsManager.closeModal()"></div>
+        <div class="reports-modal-content">
+            <div class="reports-modal-left" id="reports-modal-left"></div>
+            <div class="reports-modal-right" id="reports-modal-right"></div>
+        </div>
+    </div>
+
+    <!-- REPORTS CLOSE MODAL -->
+    <div id="reports-close-modal" class="reports-close-modal" style="display:none">
+        <div class="reports-modal-overlay" onclick="ReportsManager.closeCloseModal()"></div>
+        <div class="reports-close-content" id="reports-close-content"></div>
+    </div>
+
+    <!-- SERVERS TAB -->
+    <div class="tab-content" id="tab-servers">
+        <div class="servers-layout" id="servers-layout">
+            <div class="empty"><span class="empty-emoji">🖥️</span><p>Загрузка серверов...</p></div>
+        </div>
+    </div>
+
+    <!-- NORMA COMBINED TAB: Норма + Статистика стаффа -->
+    <div class="tab-content" id="tab-norma-combined">
+        <div class="combined-tab-header">
+            <button class="combined-tab-btn active" data-subtab="bans" onclick="App.switchSubTab('norma-combined','bans',this)">📋 Норма</button>
+            <button class="combined-tab-btn" data-subtab="staffstats" onclick="App.switchSubTab('norma-combined','staffstats',this)">📊 Статистика стаффа</button>
+        </div>
+        <div class="combined-tab-body" id="norma-combined-body">
+            <!-- Контент подставляется динамически -->
+        </div>
+    </div>
+
+    <!-- STAFF COMBINED TAB: Стафф + Покупные -->
+    <div class="tab-content" id="tab-staff-combined">
+        <div class="combined-tab-header">
+            <button class="combined-tab-btn active" data-subtab="staff" onclick="App.switchSubTab('staff-combined','staff',this)">👮 Стафф <span class="snav-badge" id="staff-online-badge2">0</span></button>
+            <button class="combined-tab-btn" data-subtab="paid" onclick="App.switchSubTab('staff-combined','paid',this)">💰 Покупные <span class="snav-badge" id="paid-online-badge2">0</span></button>
+        </div>
+        <div class="combined-tab-body" id="staff-combined-body">
+            <!-- Контент подставляется динамически -->
+        </div>
+    </div>
+
+    <!-- PLAYER CHECK TAB -->
+    <div class="tab-content" id="tab-playercheck">
+        <div style="padding:20px;max-width:700px;margin:0 auto">
+            <div style="font-size:20px;font-weight:700;margin-bottom:20px">🔎 Проверка игрока</div>
+            <div style="display:flex;gap:8px;margin-bottom:20px">
+                <input id="player-check-input" type="text" placeholder="SteamID64..." onkeydown="if(event.key==='Enter')PlayerCheckManager.check()" style="flex:1;padding:12px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--t1);font-size:14px">
+                <button onclick="PlayerCheckManager.check()" style="padding:12px 24px;background:linear-gradient(135deg,#60a5fa,#a855f7);color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:14px">Проверить</button>
+            </div>
+            <div id="player-check-result"></div>
+        </div>
+    </div>
+
+    <!-- PLAYER CHECK MODAL -->
+    <div id="player-check-modal" class="reports-close-modal" style="display:none">
+        <div class="reports-modal-overlay" onclick="StaffStatsManager.closeCheck()"></div>
+        <div class="reports-close-content" id="player-check-content" style="width:min(600px,95vw);max-height:85vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <span style="font-size:16px;font-weight:700">🔍 Проверка игрока</span>
+                <button onclick="StaffStatsManager.closeCheck()" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:18px">✕</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:16px">
+                <input id="player-check-input" type="text" placeholder="SteamID64..." style="flex:1;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--t1);font-size:14px">
+                <button onclick="StaffStatsManager.checkPlayer()" style="padding:10px 20px;background:linear-gradient(135deg,#60a5fa,#a855f7);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Проверить</button>
+            </div>
+            <div id="player-check-result"></div>
+        </div>
+    </div>
+
+    <!-- SERVER DETAIL MODAL -->
+    <div id="server-modal" class="server-modal" style="display:none">
+        <div class="server-modal-overlay" onclick="ServersManager.closeModal()"></div>
+        <div class="server-modal-content" id="server-modal-content"></div>
+    </div>
+
     </main><!-- /app-main -->
 
+    <div id="toast-container"></div>
+    <button class="sidebar-show-btn" onclick="App.toggleSidebar()">▶ Меню</button>
     <script src="app.js"></script>
 </body>
 </html>
