@@ -8,7 +8,7 @@ const CONFIG = {
 };
 
 // Рекорд стаффа
-const STAFF_RECORD = Object.freeze({ count: 810, author: 'молочныйРейдизан' });
+const STAFF_RECORD = Object.freeze({ count: 810, author: 'молочный' });
 
 // State
 let serversData = [];
@@ -2099,9 +2099,10 @@ const BansManager = {
         // Закрываем
         const sel = document.getElementById('bans-month-select');
         if (sel) sel.classList.remove('open');
-        // Фильтруем
+        // Фильтруем — используем _currentSteamid как приоритет
+        const sid = this._currentSteamid || steamid || (AuthManager.user?.steamid || AuthManager.user?.steam_id || '');
         this._currentMonthFilter = value;
-        this._applyMonthFilter(steamid, value);
+        this._applyMonthFilter(sid, value);
         // Обновляем счётчик тикетов за выбранный месяц
         if (StaffStatsManager._ticketMonthly) {
             const ticketEl = document.getElementById('stat-tickets');
@@ -2154,8 +2155,14 @@ const BansManager = {
     },
 
     _applyMonthFilter(steamid, month) {
-        const result = this._lastResult[steamid];
-        const all = [...(result?.bans || []), ...(result?.mutes || [])].sort((a, b) => b.created - a.created);
+        // Используем _currentSteamid как приоритет — он всегда актуален
+        const sid = this._currentSteamid || steamid;
+        const result = this._lastResult[sid];
+        if (!result) {
+            console.warn('[BansManager] no data for steamid:', sid, 'keys:', Object.keys(this._lastResult));
+            return;
+        }
+        const all = [...(result.bans || []), ...(result.mutes || [])].sort((a, b) => b.created - a.created);
         const listEl = document.getElementById('bans-list');
 
         // Фильтруем подмножество
