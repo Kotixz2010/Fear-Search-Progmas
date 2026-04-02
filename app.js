@@ -1523,19 +1523,31 @@ const App = {
         if (btn) btn.classList.add('active');
         this._openCombinedSubTab(combined);
     },
+        // Дефолтные подвкладки для каждого combined
+        const DEFAULTS = { 'norma-combined': 'bans', 'staff-combined': 'staff' };
+        const subtab = this._combinedSubTabs[combined] || DEFAULTS[combined] || 'bans';
 
-    _openCombinedSubTab(combined) {
-        const subtab = this._combinedSubTabs[combined] || (combined === 'norma-combined' ? 'bans' : 'staff');
+        // Проверяем что subtab соответствует combined — защита от перепутанного состояния
+        const VALID = {
+            'norma-combined': new Set(['bans', 'staffstats']),
+            'staff-combined': new Set(['staff', 'paid'])
+        };
+        const validSubtab = VALID[combined]?.has(subtab) ? subtab : DEFAULTS[combined];
         const body = document.getElementById(`${combined}-body`);
         if (!body) return;
 
         // Переносим контент нужной вкладки в body
-        const source = document.getElementById(`tab-${subtab}`);
+        const source = document.getElementById(`tab-${validSubtab}`);
         if (!source) return;
 
         body.innerHTML = '';
         Array.from(source.children).forEach(child => {
             body.appendChild(child.cloneNode(true));
+        });
+
+        // Обновляем активную кнопку
+        document.querySelectorAll(`#tab-${combined} .combined-tab-btn`).forEach(b => {
+            b.classList.toggle('active', b.dataset.subtab === validSubtab);
         });
 
         // Обновляем бейджи в хедере объединённой вкладки
@@ -1549,11 +1561,15 @@ const App = {
         }
 
         // Запускаем нужные менеджеры
-        if (subtab === 'bans') {
+        if (validSubtab === 'bans') {
             BansManager.startAuto();
             StaffStatsManager._updateTicketsCard(StaffStatsManager._ticketMonthly);
-        } else if (subtab === 'staffstats') {
+        } else if (validSubtab === 'staffstats') {
             StaffStatsManager.open();
+        } else if (validSubtab === 'staff') {
+            StaffManager.render(Object.fromEntries(allPlayers.map(p => [p.steam_id, p])));
+        } else if (validSubtab === 'paid') {
+            PaidManager.render(Object.fromEntries(allPlayers.map(p => [p.steam_id, p])));
         }
     },
 
