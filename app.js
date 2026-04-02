@@ -478,7 +478,9 @@ const PaidManager = {
     },
 
     render(onlineMap) {
-        const container = document.getElementById('paid-groups');
+        // Ищем в активном контейнере — staff-combined-body имеет приоритет
+        const activeBody = document.querySelector('#staff-combined-body');
+        const container = activeBody?.querySelector('#paid-groups') || document.getElementById('paid-groups');
         if (!container) return;
         if (!AuthManager.hasAccess()) return;
 
@@ -708,7 +710,9 @@ const StaffManager = {
     },
 
     render(onlineMap) {
-        const container = document.getElementById('staff-groups');
+        // Ищем в активном контейнере — staff-combined-body имеет приоритет
+        const activeBody = document.querySelector('#staff-combined-body');
+        const container = activeBody?.querySelector('#staff-groups') || document.getElementById('staff-groups');
         if (!container) return;
         container.innerHTML = '';
 
@@ -1941,9 +1945,9 @@ const BansManager = {
         const thisMonth = byMonth[curKey] || 0;
         const loadedAt = new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-        const activeTotal = activeBans + activeMutes; // Всего = активные баны + активные муты (снятые уже вычтены)
         const activeBans  = bans.filter(b => !isRemoved(b)).length;
         const activeMutes = mutes.filter(b => !isRemoved(b)).length;
+        const activeTotal = activeBans + activeMutes; // Всего = активные баны + активные муты (снятые уже вычтены)
 
         // Рекорд месяца
         const recordKey = Object.entries(byMonth).sort((a,b) => b[1]-a[1])[0];
