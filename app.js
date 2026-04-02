@@ -1555,17 +1555,27 @@ const App = {
 
         body.innerHTML = '';
 
-        if (source) {
+        if (validSubtab === 'staff') {
+            // Рендерим стафф напрямую — не клонируем
+            body.innerHTML = '<div class="staff-layout"><div class="staff-groups" id="staff-groups-combined"><div class="loader"><div class="loader-ring"></div><span>Загрузка...</span></div></div></div>';
+            const onlineMap = Object.fromEntries(allPlayers.map(p => [p.steam_id, p]));
+            // Временно подменяем getElementById чтобы StaffManager нашёл нужный контейнер
+            const origContainer = document.getElementById('staff-groups');
+            const newContainer = body.querySelector('#staff-groups-combined');
+            if (newContainer) newContainer.id = 'staff-groups';
+            StaffManager.render(onlineMap);
+            if (newContainer && origContainer) newContainer.id = 'staff-groups-combined';
+        } else if (validSubtab === 'paid') {
+            body.innerHTML = '<div class="staff-layout"><div class="staff-groups" id="paid-groups-combined"><div class="loader"><div class="loader-ring"></div><span>Загрузка...</span></div></div></div>';
+            const onlineMap = Object.fromEntries(allPlayers.map(p => [p.steam_id, p]));
+            const newContainer = body.querySelector('#paid-groups-combined');
+            if (newContainer) newContainer.id = 'paid-groups';
+            PaidManager.render(onlineMap);
+            if (newContainer) newContainer.id = 'paid-groups-combined';
+        } else if (source) {
             Array.from(source.children).forEach(child => {
                 body.appendChild(child.cloneNode(true));
             });
-        } else {
-            // Fallback — создаём контейнер напрямую
-            if (validSubtab === 'staff') {
-                body.innerHTML = '<div class="staff-layout"><div class="staff-groups" id="staff-groups"><div class="loader"><div class="loader-ring"></div><span>Загрузка...</span></div></div></div>';
-            } else if (validSubtab === 'paid') {
-                body.innerHTML = '<div class="staff-layout"><div class="staff-groups" id="paid-groups"><div class="loader"><div class="loader-ring"></div><span>Загрузка...</span></div></div></div>';
-            }
         }
 
         // Обновляем активную кнопку
@@ -1589,11 +1599,8 @@ const App = {
             StaffStatsManager._updateTicketsCard(StaffStatsManager._ticketMonthly);
         } else if (validSubtab === 'staffstats') {
             StaffStatsManager.open();
-        } else if (validSubtab === 'staff') {
-            StaffManager.render(Object.fromEntries(allPlayers.map(p => [p.steam_id, p])));
-        } else if (validSubtab === 'paid') {
-            PaidManager.render(Object.fromEntries(allPlayers.map(p => [p.steam_id, p])));
         }
+        // staff и paid уже отрендерены выше напрямую
     },
 
     toggleCsgoPlayers(label) {
@@ -4970,6 +4977,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ── Splash: проверка обновлений → авторизация → загрузка всего → скрыть ──
+    // Подставляем версию
+    if (window.electronAPI?.getVersion) {
+        window.electronAPI.getVersion().then(v => {
+            const el = document.getElementById('splash-version');
+            if (el) el.textContent = 'v' + v;
+        }).catch(() => {});
+    }
     Splash.setStatus('Проверяем обновления...', 10);
     await new Promise(r => setTimeout(r, 500));
 
