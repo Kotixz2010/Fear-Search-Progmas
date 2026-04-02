@@ -1391,9 +1391,12 @@ const App = {
                 if (tab === 'staffstats') {
                     StaffStatsManager.open();
                 }
-                if (tab === 'staff-combined') {
-                    App._openCombinedSubTab('staff-combined');
-                }
+        if (tab === 'staff-combined') {
+            // Принудительно сбрасываем на дефолт при каждом открытии
+            App._combinedSubTabs['staff-combined'] = App._combinedSubTabs['staff-combined'] === 'staff' || App._combinedSubTabs['staff-combined'] === 'paid'
+                ? App._combinedSubTabs['staff-combined'] : 'staff';
+            App._openCombinedSubTab('staff-combined');
+        }
                 if (tab === 'playercheck') {
                     PlayerCheckManager.open();
                 }
@@ -1531,14 +1534,19 @@ const App = {
     _openCombinedSubTab(combined) {
         // Дефолтные подвкладки для каждого combined
         const DEFAULTS = { 'norma-combined': 'bans', 'staff-combined': 'staff' };
-        const subtab = this._combinedSubTabs[combined] || DEFAULTS[combined] || 'bans';
-
-        // Проверяем что subtab соответствует combined — защита от перепутанного состояния
         const VALID = {
             'norma-combined': new Set(['bans', 'staffstats']),
             'staff-combined': new Set(['staff', 'paid'])
         };
-        const validSubtab = VALID[combined]?.has(subtab) ? subtab : DEFAULTS[combined];
+
+        // Берём subtab и жёстко валидируем
+        const raw = this._combinedSubTabs[combined];
+        const validSubtab = VALID[combined]?.has(raw) ? raw : DEFAULTS[combined];
+
+        // Обновляем состояние если было невалидным
+        if (raw !== validSubtab) {
+            this._combinedSubTabs[combined] = validSubtab;
+        }
         const body = document.getElementById(`${combined}-body`);
         if (!body) return;
 
