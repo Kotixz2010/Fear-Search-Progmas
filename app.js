@@ -563,43 +563,39 @@ const PaidManager = {
                     const teamLabel  = player.team === 'ct' ? 'CT' : (player.team === 't' ? 'T' : 'SPEC');
                     const gameTag    = getServerGameTag(player.server?.ip, player.server?.port);
                     onlineInfo = `
-                        <div class="staff-online-info">
+                        <div class="sc-server-row">
                             <span class="player-team ${teamClass}">${teamLabel}</span>
-                            <span class="staff-server">�️ ${safeServer} ${gameTag}</span>
-                            <span class="staff-map">🗺️ ${safeMap}</span>
-                            <span class="staff-kd">K/D: ${UI.calculateKD(player.kills, player.deaths)}</span>
-                            <button class="btn-connect-small" onclick="App.connectToServer('${safeAddr}')">🎯 Connect</button>
-                        </div>`;
+                            <span class="sc-server-name">${safeServer} ${gameTag}</span>
+                        </div>
+                        <div class="sc-map-row">
+                            <span class="sc-map">🗺️ ${safeMap}</span>
+                            <span class="sc-kd">K/D: ${UI.calculateKD(player.kills, player.deaths)}</span>
+                        </div>
+                        <button class="sc-connect-btn" onclick="App.connectToServer('${safeAddr}')">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Connect
+                        </button>`;
                 }
 
                 const lastSeenHtml = !isOnline && fearLastSeenAdmin
-                    ? `<div class="staff-last-seen">👁 Последний раз на серверах: ${UI.formatDateTime(fearLastSeenAdmin)} <span>(${UI.getTimeAgo(fearLastSeenAdmin)})</span></div>`
+                    ? `<div class="sc-last-seen">👁 ${UI.formatDateTime(fearLastSeenAdmin)} <span>(${UI.getTimeAgo(fearLastSeenAdmin)})</span></div>`
                     : '';
 
                 card.innerHTML = `
                     <img src="${safeAvatar || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'}"
-                         class="staff-avatar ${isOnline ? 'online' : ''}" loading="lazy"
+                         class="sc-avatar ${isOnline ? 'online' : ''}" loading="lazy"
                          onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
-                    <div class="staff-info">
-                        <div class="staff-name">
-                            ${(() => {
-                                const cn = getCustomNick(admin.steamid);
-                                const displayName = cn || safeName;
-                                if (isOnline && player.nickname !== displayName) {
-                                    return `<span title="Ник в игре">${escapeHtml(player.nickname)}</span><span class="staff-site-nick">${escapeHtml(displayName)}</span>`;
-                                }
-                                return escapeHtml(displayName);
-                            })()}
-                            ${frozenBadge}
+                    <div class="sc-top">
+                        <div class="sc-identity">
+                            <div class="sc-name">${(() => { const cn = getCustomNick(admin.steamid); return escapeHtml(cn || safeName); })()}${frozenBadge}</div>
+                            <div class="sc-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
                         </div>
-                        <div class="staff-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
-                        ${onlineInfo}
-                        ${lastSeenHtml}
+                        <span class="sc-status ${isOnline ? 'online' : 'offline'}">${isOnline ? '● ОНЛАЙН' : '○ ОФФЛАЙН'}</span>
                     </div>
-                    <div class="staff-status-col">
-                        <span class="status-pill ${isOnline ? 'online' : 'offline'}">${isOnline ? '● ОНЛАЙН' : '○ ОФФЛАЙН'}</span>
-                        <button class="btn-steam-small" onclick="App.openSteamProfile('${safeId}')">Steam</button>
-                        <button class="btn-fear-small" onclick="App.openFearProfile('${safeId}')">Fear</button>
+                    <div class="sc-body">${onlineInfo}${lastSeenHtml}</div>
+                    <div class="sc-actions">
+                        <button class="sc-btn steam" onclick="App.openSteamProfile('${safeId}')">Steam</button>
+                        <button class="sc-btn fear" onclick="App.openFearProfile('${safeId}')">Fear</button>
                     </div>
                 `;
                 membersEl.appendChild(card);
@@ -620,18 +616,20 @@ const PaidManager = {
                     : '';
 
                 card.innerHTML = `
-                    <img src="${safeAvatar || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'}"
-                         class="staff-avatar" loading="lazy"
-                         onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
-                    <div class="staff-info">
-                        <div class="staff-name">${safeName} ${frozenBadge}</div>
-                        <div class="staff-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
-                        ${lastSeenHtml}
+                    <div class="sc-top">
+                        <img src="${safeAvatar || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'}"
+                             class="sc-avatar" loading="lazy"
+                             onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
+                        <div class="sc-identity">
+                            <div class="sc-name">${safeName}${frozenBadge}</div>
+                            <div class="sc-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
+                        </div>
+                        <span class="sc-status offline">○ ОФФЛАЙН</span>
                     </div>
-                    <div class="staff-status-col">
-                        <span class="status-pill offline">○ ОФФЛАЙН</span>
-                        <button class="btn-steam-small" onclick="App.openSteamProfile('${safeId}')">Steam</button>
-                        <button class="btn-fear-small" onclick="App.openFearProfile('${safeId}')">Fear</button>
+                    <div class="sc-body">${lastSeenHtml}</div>
+                    <div class="sc-actions">
+                        <button class="sc-btn steam" onclick="App.openSteamProfile('${safeId}')">Steam</button>
+                        <button class="sc-btn fear" onclick="App.openFearProfile('${safeId}')">Fear</button>
                     </div>
                 `;
                 offlineEl.appendChild(card);
@@ -782,43 +780,48 @@ const StaffManager = {
                     const teamClass  = player.team === 'ct' ? 'team-ct' : (player.team === 't' ? 'team-t' : 'team-spec');
                     const teamLabel  = player.team === 'ct' ? 'CT' : (player.team === 't' ? 'T' : 'SPEC');
                     const gameTag    = getServerGameTag(player.server?.ip, player.server?.port);
+                    const kd         = UI.calculateKD(player.kills, player.deaths);
                     onlineInfo = `
-                        <div class="staff-online-info">
+                        <div class="sc-server-row">
                             <span class="player-team ${teamClass}">${teamLabel}</span>
-                            <span class="staff-server">🖥️ ${safeServer} ${gameTag}</span>
-                            <span class="staff-map">🗺️ ${safeMap}</span>
-                            <span class="staff-kd">K/D: ${UI.calculateKD(player.kills, player.deaths)}</span>
-                            <button class="btn-connect-small" onclick="App.connectToServer('${safeAddr}')">🎯 Connect</button>
-                        </div>`;
+                            <span class="sc-server-name">${safeServer} ${gameTag}</span>
+                        </div>
+                        <div class="sc-map-row">
+                            <span class="sc-map">🗺️ ${safeMap}</span>
+                            <span class="sc-kd">K/D: ${kd}</span>
+                        </div>
+                        <button class="sc-connect-btn" onclick="App.connectToServer('${safeAddr}')">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Connect
+                        </button>`;
                 }
 
                 const lastSeenHtml = !isOnline && fearLastSeenAdmin
-                    ? `<div class="staff-last-seen">👁 Последний раз на серверах: ${UI.formatDateTime(fearLastSeenAdmin)} <span>(${UI.getTimeAgo(fearLastSeenAdmin)})</span></div>`
+                    ? `<div class="sc-last-seen">👁 ${UI.formatDateTime(fearLastSeenAdmin)} <span>(${UI.getTimeAgo(fearLastSeenAdmin)})</span></div>`
                     : '';
 
+                const displayName = (() => {
+                    const cn = getCustomNick(admin.steamid);
+                    return cn || safeName;
+                })();
+
                 card.innerHTML = `
-                    <img src="${safeAvatar}" class="staff-avatar ${isOnline ? 'online' : ''}" loading="lazy"
-                         onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
-                    <div class="staff-info">
-                        <div class="staff-name">
-                            ${(() => {
-                                const cn = getCustomNick(admin.steamid);
-                                const displayName = cn || safeName;
-                                if (isOnline && player.nickname !== displayName) {
-                                    return `<span title="Ник в игре">${escapeHtml(player.nickname)}</span><span class="staff-site-nick">${escapeHtml(displayName)}</span>`;
-                                }
-                                return escapeHtml(displayName);
-                            })()}
-                            ${frozenBadge}
+                    <div class="sc-top">
+                        <img src="${safeAvatar}" class="sc-avatar ${isOnline ? 'online' : ''}" loading="lazy"
+                             onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
+                        <div class="sc-identity">
+                            <div class="sc-name">${escapeHtml(displayName)}${frozenBadge}</div>
+                            <div class="sc-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
                         </div>
-                        <div class="staff-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
+                        <span class="sc-status ${isOnline ? 'online' : 'offline'}">${isOnline ? '● ОНЛАЙН' : '○ ОФФЛАЙН'}</span>
+                    </div>
+                    <div class="sc-body">
                         ${onlineInfo}
                         ${lastSeenHtml}
                     </div>
-                    <div class="staff-status-col">
-                        <span class="status-pill ${isOnline ? 'online' : 'offline'}">${isOnline ? '● ОНЛАЙН' : '○ ОФФЛАЙН'}</span>
-                        <button class="btn-steam-small" onclick="App.openSteamProfile('${safeId}')">Steam</button>
-                        <button class="btn-fear-small" onclick="App.openFearProfile('${safeId}')">Fear</button>
+                    <div class="sc-actions">
+                        <button class="sc-btn steam" onclick="App.openSteamProfile('${safeId}')">Steam</button>
+                        <button class="sc-btn fear" onclick="App.openFearProfile('${safeId}')">Fear</button>
                     </div>
                 `;
                 membersEl.appendChild(card);
@@ -1303,27 +1306,34 @@ function createPlayerCard(player) {
             <span class="vac-badge-days">${player.vacInfo.daysSinceLastBan} дн. назад</span>
         </div>` : ''}
 
-        <div class="pc-top">
+        <div class="pc-header">
             <div class="pc-avatar-wrap">
                 <img src="${safeAvatarUrl}" class="pc-avatar ${avatarClass}" loading="lazy"
                      onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
-                ${player.is_admin ? '<span class="pc-admin-dot" title="Администратор">ADMIN</span>' : ''}
+                ${player.is_admin ? '<span class="pc-admin-dot">ADMIN</span>' : ''}
             </div>
             <div class="pc-identity">
                 <div class="pc-name" title="${safeNickname}">${safeNickname}</div>
                 ${siteNickHtml}
-                <div class="pc-steamid" onclick="App.copyToClipboard('${safeSteamId}')" title="Скопировать SteamID">${safeSteamId}</div>
+                <div class="pc-steamid" onclick="App.copyToClipboard('${safeSteamId}')">${safeSteamId}</div>
+            </div>
+        </div>
+
+        <div class="pc-info-row">
+            <div class="pc-date-block ${ageClass}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <div>
+                    <div class="pc-date-main">${dateStr}</div>
+                    <div class="pc-date-ago">${timeAgo}</div>
+                </div>
             </div>
             <div class="pc-server-block">
-                <div class="pc-server-time ${ageClass}">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    ${dateStr} · ${timeAgo}
-                </div>
                 <div class="pc-server-row">
                     <span class="player-team ${teamClass}">${teamLabel}</span>
                     <span class="pc-server-name">${safeServerName} ${gameTag}</span>
                 </div>
-                <div class="pc-server-map">🗺️ ${safeServerMap} &nbsp;·&nbsp; 📡 ${safeAddress}</div>
+                <div class="pc-server-map">🗺️ ${safeServerMap}</div>
+                <div class="pc-server-addr">🌐 ${safeAddress}</div>
                 ${fearLastSeen ? `<div class="pc-last-seen">👁 ${UI.formatDateTime(fearLastSeen)} <span>(${UI.getTimeAgo(fearLastSeen)})</span></div>` : ''}
             </div>
         </div>
@@ -1343,24 +1353,26 @@ function createPlayerCard(player) {
             </div>
         </div>
 
-        <div class="pc-actions">
-            <button class="pc-btn secondary" onclick="App.openSteamProfile('${safeSteamId}')">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        <div class="pc-actions-row1">
+            <button class="pc-btn-flat" onclick="App.openSteamProfile('${safeSteamId}')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
                 Профиль Steam
             </button>
-            <button class="pc-btn secondary" onclick="App.openFearProfile('${safeSteamId}')">
+            <button class="pc-btn-flat" onclick="App.openFearProfile('${safeSteamId}')">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
                 Профиль Fear
             </button>
-            <button class="pc-btn secondary" onclick="App.copyToClipboard('${safeSteamId}')">
+            <button class="pc-btn-flat" onclick="App.copyToClipboard('${safeSteamId}')">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 SteamID
             </button>
-            <button class="pc-btn secondary" onclick="App.copyConnect('${safeAddress}')">
+        </div>
+        <div class="pc-actions-row2">
+            <button class="pc-btn-flat" onclick="App.copyConnect('${safeAddress}')">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                 IP:PORT
             </button>
-            <button class="pc-btn primary" onclick="App.connectToServer('${safeAddress}')">
+            <button class="pc-btn-primary" onclick="App.connectToServer('${safeAddress}')">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 Подключиться
             </button>
