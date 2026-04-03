@@ -3028,15 +3028,12 @@ body {
     padding: 10px 16px;
     border-bottom: 1px solid var(--border);
     background: var(--bg);
-    position: sticky;
-    top: 0;
-    z-index: 10;
     flex-shrink: 0;
 }
 
 /* Контейнер объединённой вкладки — flex column чтобы body занимал оставшееся место */
-#tab-norma-combined,
-#tab-staff-combined {
+#tab-norma-combined.active,
+#tab-staff-combined.active {
     display: flex !important;
     flex-direction: column !important;
     height: 100vh !important;
