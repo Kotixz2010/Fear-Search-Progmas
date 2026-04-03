@@ -8,8 +8,8 @@
     --bg3:     #111124;
     --bg4:     #16162a;
     --glass:   rgba(255,255,255,0.05);
-    --border:  rgba(255,255,255,0.08);
-    --border2: rgba(255,255,255,0.15);
+    --border:  rgba(255,255,255,0.10);
+    --border2: rgba(255,255,255,0.18);
 
     --cyan:    #00f0ff;
     --purple:  #a855f7;
@@ -21,8 +21,8 @@
     --yellow:  #ffe033;
 
     --t1: #f0f0ff;
-    --t2: #8080b0;
-    --t3: #3a3a58;
+    --t2: #a0a0c8;
+    --t3: #5a5a80;
 
     /* Акцентные переменные (переопределяются темами) */
     --accent1: #a855f7;
@@ -446,7 +446,7 @@ body {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pc-steamid {
-    font-size: 10px; font-family: monospace; color: var(--t3);
+    font-size: 10px; font-family: monospace; color: var(--t2);
     cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     transition: color .15s;
 }
@@ -517,10 +517,12 @@ body {
     padding: 6px 4px; border-radius: 6px;
     font-size: 10px; font-weight: 600; font-family: inherit;
     cursor: pointer; text-align: center;
-    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: var(--t2);
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.15);
+    color: var(--t1);
     transition: all .15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.pc-btn-flat:hover { background: rgba(255,255,255,.1); color: var(--t1); }
+.pc-btn-flat:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.3); }
 
 .pc-btn-primary {
     padding: 7px; border-radius: 6px;
@@ -535,11 +537,11 @@ body {
 .pc-btn-sm {
     padding: 6px 4px; border-radius: 6px; text-align: center;
     font-size: 10px; font-weight: 600; font-family: inherit;
-    cursor: pointer; border: 1px solid rgba(255,255,255,.08);
-    background: rgba(255,255,255,.04); color: var(--t2); transition: all .15s;
+    cursor: pointer; border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.06); color: var(--t1); transition: all .15s;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.pc-btn-sm:hover { background: rgba(255,255,255,.09); color: var(--t1); }
+.pc-btn-sm:hover { background: rgba(255,255,255,.12); }
 .pc-btn-sm.success { border-color: rgba(74,222,128,.35); color: #4ade80; background: rgba(74,222,128,.08); }
 .pc-btn-sm.success:hover { background: rgba(74,222,128,.15); }
 .pc-btn-sm.danger  { border-color: rgba(248,113,113,.35); color: #f87171; background: rgba(248,113,113,.08); }
@@ -1024,7 +1026,7 @@ body {
     margin-bottom: 2px;
 }
 .sc-steamid {
-    font-size: 10px; font-family: monospace; color: var(--t3);
+    font-size: 10px; font-family: monospace; color: var(--t2);
     cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     transition: color .15s;
 }
@@ -1035,8 +1037,8 @@ body {
     padding: 3px 8px; border-radius: 6px; flex-shrink: 0;
     white-space: nowrap;
 }
-.sc-status.online  { background: rgba(0,230,118,.12); color: var(--green); border: 1px solid rgba(0,230,118,.3); }
-.sc-status.offline { background: rgba(128,128,176,.08); color: var(--t3);  border: 1px solid rgba(255,255,255,.08); }
+.sc-status.online  { background: rgba(0,230,118,.18); color: #4ade80; border: 1px solid rgba(0,230,118,.4); }
+.sc-status.offline { background: rgba(128,128,176,.1); color: var(--t2); border: 1px solid rgba(255,255,255,.12); }
 
 .sc-body { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
 
