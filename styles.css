@@ -8,27 +8,27 @@
     --bg3:     #111124;
     --bg4:     #16162a;
     --glass:   rgba(255,255,255,0.05);
-    --border:  rgba(255,255,255,0.10);
-    --border2: rgba(255,255,255,0.18);
+    --border:  rgba(255,255,255,0.12);
+    --border2: rgba(255,255,255,0.22);
 
-    --cyan:    #00f0ff;
-    --purple:  #a855f7;
-    --pink:    #ff3d8a;
-    --blue:    #3d8fff;
-    --green:   #00e676;
-    --orange:  #ffab00;
-    --red:     #ff3d3d;
-    --yellow:  #ffe033;
+    --cyan:    #00f5ff;
+    --purple:  #b060ff;
+    --pink:    #ff4d95;
+    --blue:    #4d9fff;
+    --green:   #00f080;
+    --orange:  #ffb800;
+    --red:     #ff4545;
+    --yellow:  #ffe84d;
 
-    --t1: #f0f0ff;
-    --t2: #a0a0c8;
-    --t3: #5a5a80;
+    --t1: #f4f4ff;
+    --t2: #b8b8d8;
+    --t3: #6a6a90;
 
     /* Акцентные переменные (переопределяются темами) */
-    --accent1: #a855f7;
-    --accent2: #00f0ff;
-    --tab-active-bg: rgba(168,85,247,.15);
-    --tab-active-border: rgba(168,85,247,.4);
+    --accent1: #b060ff;
+    --accent2: #00f5ff;
+    --tab-active-bg: rgba(176,96,255,.15);
+    --tab-active-border: rgba(176,96,255,.45);
 }
 
 /* ── ТЕМЫ ───────────────────────────────────── */
@@ -171,17 +171,17 @@ body {
     background: transparent; border: none;
     color: var(--t2); font-size: 15px; font-family: inherit;
     cursor: pointer; text-align: left;
-    transition: background .15s, color .15s, padding .3s;
+    transition: background .15s, color .15s, padding .3s, transform .15s;
     white-space: nowrap; overflow: hidden;
     position: relative;
 }
-.sidebar-nav-item:hover { background: rgba(255,255,255,.06); color: var(--t1); }
+.sidebar-nav-item:hover { background: rgba(255,255,255,.07); color: var(--t1); transform: translateX(2px); }
 .sidebar-nav-item.active {
-    background: var(--tab-active-bg, rgba(168,85,247,.15));
+    background: var(--tab-active-bg, rgba(176,96,255,.15));
     color: #fff;
-    border: 1px solid var(--tab-active-border, rgba(168,85,247,.4));
+    border: 1px solid var(--tab-active-border, rgba(176,96,255,.45));
 }
-.sidebar-nav-item.active .snav-icon { filter: drop-shadow(0 0 6px var(--accent1, var(--accent1))); }
+.sidebar-nav-item.active .snav-icon { filter: drop-shadow(0 0 8px var(--accent1, var(--accent1))); }
 
 .snav-icon { font-size: 18px; flex-shrink: 0; width: 22px; text-align: center; }
 .snav-label { flex: 1; transition: opacity .2s; overflow: hidden; text-overflow: ellipsis; }
@@ -389,36 +389,29 @@ body {
 
 /* ── PLAYER CARD ───────────────────────────── */
 .player-card {
-    background: rgba(12,12,24,.97);
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 10px;
-    padding: 10px;
+    background: linear-gradient(145deg, rgba(14,14,28,.98), rgba(10,10,22,.95));
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 12px;
+    padding: 11px;
     position: relative;
-    transition: border-color .2s, box-shadow .2s;
+    transition: border-color .18s, box-shadow .18s, transform .18s;
+    animation: cardIn .22s ease both;
+}
+@keyframes cardIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 .player-card:hover {
-    border-color: rgba(168,85,247,.35);
-    box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    border-color: rgba(168,85,247,.4);
+    box-shadow: 0 6px 24px rgba(0,0,0,.55), 0 0 0 1px rgba(168,85,247,.08);
+    transform: translateY(-1px);
 }
-.player-card.unconfigured { border-color: rgba(255,171,0,.2); }
-.player-card.unconfigured:hover { border-color: rgba(255,171,0,.45); }
-.player-card.clean { border-color: rgba(0,230,118,.2); }
-.player-card.clean:hover { border-color: rgba(0,230,118,.45); }
-.player-card.vac-banned { border-color: rgba(255,61,61,.25); }
-.player-card.vac-banned:hover { border-color: rgba(255,61,61,.5); }
-    position: relative;
-    transition: border-color .15s, box-shadow .15s;
-}
-.player-card:hover {
-    border-color: rgba(168,85,247,.35);
-    box-shadow: 0 4px 20px rgba(0,0,0,.5);
-}
-.player-card.unconfigured { border-color: rgba(255,171,0,.2); }
-.player-card.unconfigured:hover { border-color: rgba(255,171,0,.5); }
-.player-card.clean { border-color: rgba(0,230,118,.2); }
-.player-card.clean:hover { border-color: rgba(0,230,118,.5); }
+.player-card.unconfigured { border-color: rgba(255,171,0,.22); }
+.player-card.unconfigured:hover { border-color: rgba(255,171,0,.55); box-shadow: 0 6px 24px rgba(0,0,0,.5), 0 0 12px rgba(255,171,0,.08); }
+.player-card.clean { border-color: rgba(0,230,118,.22); }
+.player-card.clean:hover { border-color: rgba(0,230,118,.55); box-shadow: 0 6px 24px rgba(0,0,0,.5), 0 0 12px rgba(0,230,118,.08); }
 .player-card.vac-banned { border-color: rgba(255,61,61,.3); }
-.player-card.vac-banned:hover { border-color: rgba(255,61,61,.6); }
+.player-card.vac-banned:hover { border-color: rgba(255,61,61,.65); box-shadow: 0 6px 24px rgba(0,0,0,.5), 0 0 12px rgba(255,61,61,.1); }
 
 /* ── PLAYER CARD (pc-*) ── */
 .pc-row1 {
@@ -442,8 +435,9 @@ body {
 }
 .pc-identity { flex: 1; min-width: 0; }
 .pc-name {
-    font-size: 13px; font-weight: 700; color: #fff;
+    font-size: 13px; font-weight: 800; color: #fff;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-shadow: 0 0 20px rgba(255,255,255,.15);
 }
 .pc-steamid {
     font-size: 10px; font-family: monospace; color: var(--t2);
@@ -501,11 +495,11 @@ body {
     display: block; font-size: 9px; font-weight: 600;
     color: var(--t3); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 2px;
 }
-.pc-stat-val { display: block; font-size: 17px; font-weight: 900; }
-.pc-stat-val.kills  { color: #4ade80; }
-.pc-stat-val.deaths { color: #f87171; }
+.pc-stat-val { display: block; font-size: 18px; font-weight: 900; }
+.pc-stat-val.kills  { color: #4ade80; text-shadow: 0 0 12px rgba(74,222,128,.4); }
+.pc-stat-val.deaths { color: #f87171; text-shadow: 0 0 12px rgba(248,113,113,.4); }
 .pc-stat-val.ping   { color: #fbbf24; }
-.pc-stat-val.ping.ping-high   { color: #f87171; }
+.pc-stat-val.ping.ping-high   { color: #f87171; text-shadow: 0 0 10px rgba(248,113,113,.4); }
 .pc-stat-val.ping.ping-medium { color: #fb923c; }
 
 /* ── BUTTONS ── */
@@ -999,14 +993,15 @@ body {
 .staff-card {
     display: flex; flex-direction: column; gap: 8px;
     padding: 12px;
-    background: rgba(10,10,22,.9);
-    border: 1px solid rgba(255,255,255,.07);
-    border-radius: 12px;
-    transition: border-color .15s, box-shadow .15s;
+    background: linear-gradient(145deg, rgba(12,12,26,.95), rgba(8,8,18,.9));
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 14px;
+    transition: border-color .18s, box-shadow .18s, transform .18s;
+    animation: cardIn .22s ease both;
 }
-.staff-card:hover { border-color: rgba(168,85,247,.3); box-shadow: 0 4px 16px rgba(0,0,0,.4); }
-.staff-card.online { border-color: rgba(0,230,118,.2); }
-.staff-card.online:hover { border-color: rgba(0,230,118,.45); }
+.staff-card:hover { border-color: rgba(176,96,255,.35); box-shadow: 0 6px 20px rgba(0,0,0,.5); transform: translateY(-1px); }
+.staff-card.online { border-color: rgba(0,240,120,.22); }
+.staff-card.online:hover { border-color: rgba(0,240,120,.5); box-shadow: 0 6px 20px rgba(0,0,0,.5), 0 0 14px rgba(0,240,120,.08); }
 
 .sc-top {
     display: flex; align-items: center; gap: 10px;
@@ -1020,10 +1015,11 @@ body {
 
 .sc-identity { flex: 1; min-width: 0; }
 .sc-name {
-    font-size: 13px; font-weight: 700; color: #fff;
+    font-size: 13px; font-weight: 800; color: #fff;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     display: flex; align-items: center; gap: 5px;
     margin-bottom: 2px;
+    text-shadow: 0 0 16px rgba(255,255,255,.12);
 }
 .sc-steamid {
     font-size: 10px; font-family: monospace; color: var(--t2);
@@ -1037,8 +1033,12 @@ body {
     padding: 3px 8px; border-radius: 6px; flex-shrink: 0;
     white-space: nowrap;
 }
-.sc-status.online  { background: rgba(0,230,118,.18); color: #4ade80; border: 1px solid rgba(0,230,118,.4); }
+.sc-status.online  { background: rgba(0,240,120,.18); color: #4ade80; border: 1px solid rgba(0,240,120,.4); animation: onlinePulse 2.5s ease-in-out infinite; }
 .sc-status.offline { background: rgba(128,128,176,.1); color: var(--t2); border: 1px solid rgba(255,255,255,.12); }
+@keyframes onlinePulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(0,240,120,0); }
+    50%      { box-shadow: 0 0 0 4px rgba(0,240,120,.12); }
+}
 
 .sc-body { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
 
@@ -1909,10 +1909,10 @@ body {
     display: flex; flex-direction: column; align-items: center; gap: 2px;
     min-width: 0;
 }
-.ss-stat-val { font-size: 18px; font-weight: 900; color: var(--t1); line-height: 1; }
-.ss-stat-val.bans  { color: var(--red); }
-.ss-stat-val.mutes { color: var(--orange); }
-.ss-stat-val.total { color: var(--purple); }
+.ss-stat-val { font-size: 19px; font-weight: 900; color: var(--t1); line-height: 1; }
+.ss-stat-val.bans  { color: #ff6060; text-shadow: 0 0 12px rgba(255,69,69,.35); }
+.ss-stat-val.mutes { color: #ffbe30; text-shadow: 0 0 12px rgba(255,184,0,.3); }
+.ss-stat-val.total { color: var(--purple); text-shadow: 0 0 12px rgba(176,96,255,.35); }
 .ss-stat-label { font-size: 10px; color: var(--t3); text-transform: uppercase; letter-spacing: .4px; }
 
 .ss-bar-wrap { display: none; }
@@ -3051,13 +3051,20 @@ body {
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: all .15s;
+    transition: all .18s;
     display: flex;
     align-items: center;
     gap: 6px;
 }
-.combined-tab-btn:hover { background: rgba(255,255,255,.04); color: var(--t1); }
-.combined-tab-btn.active { background: rgba(168,85,247,.15); border-color: rgba(168,85,247,.3); color: var(--purple); }
+.combined-tab-btn:hover { background: rgba(255,255,255,.06); color: var(--t1); transform: translateY(-1px); }
+.combined-tab-btn.active { background: rgba(176,96,255,.18); border-color: rgba(176,96,255,.4); color: #d8a4ff; box-shadow: 0 0 12px rgba(176,96,255,.15); }
+
+.combined-tab-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+}
 .combined-tab-body { flex: 1; overflow-y: auto; min-height: 0; }
 
 /* ── Скрытие сайдбара ── */
@@ -3323,3 +3330,164 @@ html, body {
     transition: background .2s;
 }
 .easter-egg-inner button:hover { background: rgba(255,215,0,.25); }
+
+
+/* ═══════════════════════════════════════════
+   GLOBAL ENHANCEMENTS — яркость, анимации
+   ═══════════════════════════════════════════ */
+
+/* Более яркий текст везде */
+body { color: var(--t1); }
+.col-title { color: var(--t1); font-size: 14px; }
+.staff-group-name { color: var(--t1); font-size: 14px; }
+.staffstats-title { color: var(--t1); font-size: 18px; font-weight: 800; }
+.checker-title { color: var(--t1); }
+.pubchecker-title { color: var(--t1); }
+.reports-title { color: var(--t1); }
+.bans-stat-val { font-size: 30px; font-weight: 900; color: var(--t1); }
+.ban-name { font-size: 16px; font-weight: 800; color: #fff; }
+.ban-reason { font-size: 13px; color: var(--t2); font-weight: 500; }
+
+/* Анимация появления карточек */
+.staff-card, .ban-card, .tracked-item, .checker-card, .pub-ban-card {
+    animation: cardIn .22s ease both;
+}
+
+/* Анимация для строк staffstats */
+.ss-row:not(.ss-row-header) {
+    animation: cardIn .2s ease both;
+}
+
+/* Hover эффект для кнопок */
+.sc-btn, .pc-btn-flat, .pc-btn-sm, .checker-btn-sm {
+    transition: all .18s;
+}
+.sc-btn:hover { transform: translateY(-1px); }
+.pc-btn-flat:hover { transform: translateY(-1px); }
+
+/* Яркие бейджи */
+.snav-badge {
+    background: rgba(176,96,255,.25);
+    color: var(--accent1);
+    font-size: 11px; font-weight: 800;
+    padding: 2px 8px; border-radius: 20px;
+    flex-shrink: 0;
+    transition: opacity .2s;
+    border: 1px solid rgba(176,96,255,.3);
+}
+
+/* Анимация для лоадера */
+.loader { animation: fadeIn .3s ease; }
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* Яркий прогресс-бар */
+.ss-progress-fill,
+.checker-progress-fill,
+.update-progress-fill,
+.reports-progress-fill,
+.pubchecker-progress-fill {
+    box-shadow: 0 0 8px rgba(176,96,255,.5);
+}
+
+/* Анимация для тоста */
+.toast {
+    animation: toastPop .3s cubic-bezier(.34,1.56,.64,1), toastGlow 2s ease-in-out infinite;
+}
+@keyframes toastGlow {
+    0%,100% { box-shadow: 0 8px 30px rgba(0,0,0,.6), 0 0 20px rgba(176,96,255,.3); }
+    50%      { box-shadow: 0 8px 30px rgba(0,0,0,.6), 0 0 30px rgba(176,96,255,.5); }
+}
+
+/* Яркий онлайн-индикатор */
+.status-pill.online {
+    animation: onlinePulse 2.5s ease-in-out infinite;
+    background: rgba(0,240,120,.18);
+    color: #00f080;
+    border-color: rgba(0,240,120,.4);
+}
+
+/* Улучшенный col-count */
+.col-count {
+    font-size: 12px; font-weight: 900;
+    letter-spacing: .3px;
+}
+
+/* Яркие заголовки секций */
+.staff-section-head { background: rgba(0,0,0,.4); }
+
+/* Анимация для sidebar-nav-item при активации */
+.sidebar-nav-item.active {
+    animation: navItemActivate .2s ease;
+}
+@keyframes navItemActivate {
+    from { transform: translateX(-4px); opacity: .7; }
+    to   { transform: translateX(0); opacity: 1; }
+}
+
+/* Улучшенный скроллбар для staff-new-body */
+.staff-new-body::-webkit-scrollbar { width: 6px; }
+.staff-new-body::-webkit-scrollbar-thumb {
+    background: rgba(176,96,255,.4);
+    border-radius: 3px;
+}
+
+/* Яркий текст в staff-new-tabs */
+.staff-new-tab {
+    font-size: 14px;
+    font-weight: 700;
+}
+.staff-new-tab.active {
+    color: #fff;
+    text-shadow: 0 0 12px rgba(176,96,255,.5);
+}
+
+/* Улучшенный combined-tab-header */
+.combined-tab-header {
+    background: rgba(6,6,14,.95);
+    border-bottom: 1px solid rgba(176,96,255,.15);
+}
+
+/* Яркий текст в bans-stat-card */
+.bans-stat-card.highlight .bans-stat-val {
+    text-shadow: 0 0 16px rgba(255,69,69,.4);
+}
+
+/* Анимация для progress fill */
+@keyframes progressShimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+}
+.ss-progress-fill,
+.checker-progress-fill {
+    background: linear-gradient(90deg, var(--accent1), var(--accent2), var(--accent1));
+    background-size: 200% auto;
+    animation: progressShimmer 2s linear infinite;
+}
+
+/* Яркий текст для ss-name */
+.ss-name { font-size: 14px; font-weight: 800; color: var(--t1); }
+.ss-group { font-size: 12px; color: var(--t2); font-weight: 500; }
+
+/* Улучшенный staff-record-block */
+.staff-record-block {
+    animation: recordGlow 3s ease-in-out infinite;
+}
+@keyframes recordGlow {
+    0%,100% { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
+    50%      { box-shadow: 0 0 20px rgba(255,215,0,.15); }
+}
+
+/* Яркий текст в sidebar */
+.sidebar-stat-val { font-size: 15px; font-weight: 800; color: var(--t1); }
+.sidebar-user-name { font-size: 13px; font-weight: 800; color: var(--t1); }
+
+/* Hover эффект для tracked-item */
+.tracked-item { transition: border-color .18s, box-shadow .18s, transform .15s; }
+.tracked-item:hover { transform: translateX(2px); }
+
+/* Яркий текст в log */
+.log-name { font-weight: 800; color: var(--t1); font-size: 13px; }
+.log-text { color: var(--t2); font-size: 12px; }
