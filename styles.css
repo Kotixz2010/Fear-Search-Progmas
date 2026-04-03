@@ -3491,3 +3491,41 @@ body { color: var(--t1); }
 /* Яркий текст в log */
 .log-name { font-weight: 800; color: var(--t1); font-size: 13px; }
 .log-text { color: var(--t2); font-size: 12px; }
+
+
+/* ═══════════════════════════════════════════
+   NORMA COMBINED LAYOUT
+   ═══════════════════════════════════════════ */
+.norma-combined-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+.norma-panel {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+.norma-panel.active-panel {
+    display: block;
+}
+/* tab-bans и tab-staffstats внутри norma-combined не являются tab-content */
+#tab-norma-combined #tab-bans,
+#tab-norma-combined #tab-staffstats {
+    display: none;
+    height: auto;
+    overflow: visible;
+}
+#tab-norma-combined #tab-bans.active-panel,
+#tab-norma-combined #tab-staffstats.active-panel {
+    display: block;
+}
+/* bans-layout внутри norma-combined — убираем фиксированную высоту */
+#tab-norma-combined .bans-layout {
+    height: auto;
+    overflow-y: visible;
+}
+#tab-norma-combined .staffstats-layout {
+    height: auto;
+}
