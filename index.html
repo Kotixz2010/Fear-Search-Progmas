@@ -424,15 +424,14 @@
         </div>
     </div>
 
-                <!-- NORMA COMBINED TAB: содержит Норма (баны) и Статистика стаффа -->
+                <!-- NORMA COMBINED TAB: Норма + Статистика стаффа -->
     <div class="tab-content" id="tab-norma-combined">
-        <div style="display:flex;flex-direction:column;height:100vh;overflow:hidden">
+        <div class="norma-layout">
             <div class="combined-tab-header">
                 <button class="combined-tab-btn active" data-subtab="bans" onclick="App.switchSubTab('norma-combined','bans',this)">📋 Норма</button>
                 <button class="combined-tab-btn" data-subtab="staffstats" id="norma-staffstats-btn" onclick="App.switchSubTab('norma-combined','staffstats',this)">📊 Статистика стаффа</button>
             </div>
-            <!-- Панель Норма (Баны) — всегда в DOM, переключается display -->
-            <div id="tab-bans" style="flex:1;overflow-y:auto;min-height:0;display:block">
+            <div id="tab-bans" class="norma-panel">
                 <div class="bans-layout">
                     <div id="bans-stats" class="bans-stats" style="display:none"></div>
                     <div id="bans-months" class="bans-months" style="display:none"></div>
@@ -441,8 +440,7 @@
                     </div>
                 </div>
             </div>
-            <!-- Панель Статистика стаффа — всегда в DOM, переключается display -->
-            <div id="tab-staffstats" style="flex:1;overflow-y:auto;min-height:0;display:none">
+            <div id="tab-staffstats" class="norma-panel" style="display:none">
                 <div class="staffstats-layout">
                     <div class="staffstats-header">
                         <div class="staffstats-title">📊 Статистика стаффа</div>
@@ -473,6 +471,7 @@
         </div>
     </div>
 
+    
     <!-- STAFF COMBINED TAB: Стафф + Покупные -->
     <div class="tab-content" id="tab-staff-combined">
         <div class="staff-new-layout">
