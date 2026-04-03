@@ -607,7 +607,13 @@ const StaffTab = {
 
     open() {
         this._current = 'staff';
+        // Сбрасываем активную кнопку
+        document.querySelectorAll('.staff-new-tab').forEach((b, i) => b.classList.toggle('active', i === 0));
         this._render();
+        // Если данных нет — грузим
+        if (StaffManager.admins.length === 0) {
+            StaffManager.load().then(() => this._render());
+        }
     },
 
     switch(tab, btn) {
@@ -638,14 +644,13 @@ const StaffTab = {
         const b1 = document.getElementById('staff-badge-staff');
         const b2 = document.getElementById('staff-badge-paid');
         const b3 = document.getElementById('staff-online-badge');
-        if (b1) b1.textContent = staffOnline;
-        if (b2) b2.textContent = paidOnline;
+        if (b1) b1.textContent = staffOnline || StaffManager.admins.length;
+        if (b2) b2.textContent = paidOnline  || PaidManager.admins.length;
         if (b3) b3.textContent = staffOnline;
     },
 
     tick(players) {
         this.updateBadges();
-        // Перерисовываем только если вкладка открыта
         const tab = document.getElementById('tab-staff-combined');
         if (tab && tab.classList.contains('active')) {
             this._render();
@@ -2487,10 +2492,13 @@ const StaffStatsManager = {
         const progressWrap = document.getElementById('staffstats-progress');
         const progressFill = document.getElementById('ss-progress-fill');
         const progressText = document.getElementById('ss-progress-text');
+        const listEl = document.getElementById('staffstats-list');
 
-        progressWrap.style.display = 'flex';
-        progressFill.style.width = '5%';
-        progressText.textContent = `Загружаю данные для ${staff.length} человек...`;
+        // Показываем прогресс НЕМЕДЛЕННО
+        if (progressWrap) { progressWrap.style.display = 'flex'; }
+        if (progressFill) { progressFill.style.width = '5%'; }
+        if (progressText) { progressText.textContent = `Загружаю данные для ${staff.length} человек...`; }
+        if (listEl) { listEl.innerHTML = ''; }
 
         const headers = {};
         if (AuthManager.token) headers['x-auth-token'] = AuthManager.token;
