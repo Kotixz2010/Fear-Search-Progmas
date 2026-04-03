@@ -468,38 +468,25 @@ const PaidManager = {
     tick(players) {
         const onlineMap = {};
         for (const p of players) onlineMap[p.steam_id] = p;
-        const count = this.admins.filter(a => onlineMap[a.steamid]).length;
-        const badge = document.getElementById('paid-online-badge');
-        if (badge) badge.textContent = count;
-        // Обновляем бейдж в объединённой вкладке
-        const badge2 = document.getElementById('paid-online-badge2');
-        if (badge2) badge2.textContent = count;
-        this.render(onlineMap);
+        StaffTab.updateBadges();
     },
 
     render(onlineMap) {
-        // Ищем контейнер: сначала в staff-combined-body, потом глобально
-        const activeBody = document.getElementById('staff-combined-body');
-        let container = null;
-        if (activeBody) container = activeBody.querySelector('[data-paid-container]') || activeBody.querySelector('.staff-groups');
-        if (!container) container = document.getElementById('paid-groups');
-        if (!container) return;
-        if (!AuthManager.hasAccess()) return;
+        // Теперь рендерим через StaffTab
+        StaffTab.tick(allPlayers);
+    },
 
+    renderInto(container, onlineMap) {
+        container.innerHTML = '';
+        if (!AuthManager.hasAccess()) {
+            container.innerHTML = `<div class="empty"><span class="empty-emoji">🔒</span><p>Требуется доступ</p></div>`;
+            return;
+        }
         if (this.admins.length === 0) {
-            container.innerHTML = `<div class="empty"><span class="empty-emoji">💰</span><p>Загрузка списка администраторов...</p></div>`;
+            container.innerHTML = `<div class="empty"><span class="empty-emoji">💰</span><p>Нет данных о покупных</p></div>`;
             return;
         }
 
-        // Сохраняем состояние открытых оффлайн-секций
-        container.querySelectorAll('[id$="-offline"]').forEach(el => {
-            if (el.style.display !== 'none') this._openOffline.add(el.id);
-            else this._openOffline.delete(el.id);
-        });
-
-        container.innerHTML = '';
-
-        // Группируем: сначала ADMIN+, потом ADMIN
         const grouped = {};
         for (const a of this.admins) {
             const key = a.group_name || 'ADMIN';
@@ -515,11 +502,10 @@ const PaidManager = {
             if (!group) continue;
 
             const online  = group.members.filter(a => onlineMap[a.steamid]);
-            const frozen  = group.members.filter(a => a.is_frozen);
             const offline = group.members.filter(a => !onlineMap[a.steamid]);
+            const frozen  = group.members.filter(a => a.is_frozen);
             const color   = COLOR[gname] || 'orange';
-            // Безопасный id без спецсимволов
-            const safeGid = gname.replace(/[^a-zA-Z0-9]/g, '_');
+            const safeGid = 'p_' + gname.replace(/[^a-zA-Z0-9]/g, '_');
 
             const section = document.createElement('div');
             section.className = 'staff-section';
@@ -528,113 +514,78 @@ const PaidManager = {
                     <span class="col-icon ${color}">💰</span>
                     <span class="staff-group-name">${escapeHtml(group.display)}</span>
                     <span class="staff-group-count ${color}">${online.length} онлайн · ${frozen.length} заморожено · ${group.members.length} всего</span>
-                    ${offline.length > 0 ? `<button class="btn-toggle-offline" onclick="PaidManager.toggleOffline(this, 'paid-grp-${safeGid}-offline')">Показать оффлайн (${offline.length})</button>` : ''}
+                    ${offline.length > 0 ? `<button class="btn-toggle-offline" onclick="PaidManager.toggleOffline(this, '${safeGid}-offline')">Показать оффлайн (${offline.length})</button>` : ''}
                 </div>
-                <div class="staff-members" id="paid-grp-${safeGid}"></div>
-                <div class="staff-members" id="paid-grp-${safeGid}-offline" style="${this._openOffline.has(`paid-grp-${safeGid}-offline`) ? '' : 'display:none'}"></div>
+                <div class="staff-members" id="${safeGid}-online"></div>
+                <div class="staff-members" id="${safeGid}-offline" style="display:none"></div>
             `;
             container.appendChild(section);
-            // Восстанавливаем текст кнопки если секция открыта
-            if (this._openOffline.has(`paid-grp-${safeGid}-offline`)) {
-                const btn = section.querySelector('.btn-toggle-offline');
-                if (btn) btn.textContent = `Скрыть оффлайн (${offline.length})`;
-            }
 
-            const membersEl = document.getElementById(`paid-grp-${safeGid}`);
-            const offlineEl = document.getElementById(`paid-grp-${safeGid}-offline`);
-            for (const admin of online) {
-                const player = onlineMap[admin.steamid];
-                const isOnline = !!player;
-                const card = document.createElement('div');
-                card.className = `staff-card ${isOnline ? 'online' : ''} ${admin.is_frozen ? 'frozen' : ''}`;
+            const onlineEl  = section.querySelector(`#${safeGid}-online`);
+            const offlineEl = section.querySelector(`#${safeGid}-offline`);
 
-                const safeId     = escapeHtml(admin.steamid);
-                const safeName   = escapeHtml(admin.name);
-                const safeAvatar = escapeHtml(admin.avatar_full || admin.avatar_medium || admin.avatar || '');
-                const frozenBadge = admin.is_frozen ? `<span class="staff-frozen">❄ Заморожен</span>` : '';
-                const fearLastSeenAdmin = playerLastSeenOnFear[admin.steamid];
-
-                let onlineInfo = '';
-                if (isOnline) {
-                    const safeServer = escapeHtml(player.server?.name || '');
-                    const safeMap    = escapeHtml(player.server?.map || '');
-                    const safeAddr   = escapeHtml(`${player.server?.ip}:${player.server?.port}`);
-                    const teamClass  = player.team === 'ct' ? 'team-ct' : (player.team === 't' ? 'team-t' : 'team-spec');
-                    const teamLabel  = player.team === 'ct' ? 'CT' : (player.team === 't' ? 'T' : 'SPEC');
-                    const gameTag    = getServerGameTag(player.server?.ip, player.server?.port);
-                    onlineInfo = `
-                        <div class="sc-server-row">
-                            <span class="player-team ${teamClass}">${teamLabel}</span>
-                            <span class="sc-server-name">${safeServer} ${gameTag}</span>
-                        </div>
-                        <div class="sc-map-row">
-                            <span class="sc-map">🗺️ ${safeMap}</span>
-                            <span class="sc-kd">K/D: ${UI.calculateKD(player.kills, player.deaths)}</span>
-                        </div>
-                        <button class="sc-connect-btn" onclick="App.connectToServer('${safeAddr}')">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                            Connect
-                        </button>`;
-                }
-
-                const lastSeenHtml = !isOnline && fearLastSeenAdmin
-                    ? `<div class="sc-last-seen">👁 ${UI.formatDateTime(fearLastSeenAdmin)} <span>(${UI.getTimeAgo(fearLastSeenAdmin)})</span></div>`
-                    : '';
-
-                card.innerHTML = `
-                    <img src="${safeAvatar || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'}"
-                         class="sc-avatar ${isOnline ? 'online' : ''}" loading="lazy"
-                         onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
-                    <div class="sc-top">
-                        <div class="sc-identity">
-                            <div class="sc-name">${(() => { const cn = getCustomNick(admin.steamid); return escapeHtml(cn || safeName); })()}${frozenBadge}</div>
-                            <div class="sc-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
-                        </div>
-                        <span class="sc-status ${isOnline ? 'online' : 'offline'}">${isOnline ? '● ОНЛАЙН' : '○ ОФФЛАЙН'}</span>
-                    </div>
-                    <div class="sc-body">${onlineInfo}${lastSeenHtml}</div>
-                    <div class="sc-actions">
-                        <button class="sc-btn steam" onclick="App.openSteamProfile('${safeId}')">Steam</button>
-                        <button class="sc-btn fear" onclick="App.openFearProfile('${safeId}')">Fear</button>
-                    </div>
-                `;
-                membersEl.appendChild(card);
-            }
-
-            // Оффлайн карточки — в скрытый блок
-            for (const admin of offline) {
-                const card = document.createElement('div');
-                card.className = `staff-card ${admin.is_frozen ? 'frozen' : ''}`;
-
-                const safeId      = escapeHtml(admin.steamid);
-                const safeName    = escapeHtml(admin.name);
-                const safeAvatar  = escapeHtml(admin.avatar_full || admin.avatar_medium || admin.avatar || '');
-                const frozenBadge = admin.is_frozen ? `<span class="staff-frozen">❄ Заморожен</span>` : '';
-                const fearLastSeenAdmin = playerLastSeenOnFear[admin.steamid];
-                const lastSeenHtml = fearLastSeenAdmin
-                    ? `<div class="staff-last-seen">👁 Последний раз на серверах: ${UI.formatDateTime(fearLastSeenAdmin)} <span>(${UI.getTimeAgo(fearLastSeenAdmin)})</span></div>`
-                    : '';
-
-                card.innerHTML = `
-                    <div class="sc-top">
-                        <img src="${safeAvatar || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'}"
-                             class="sc-avatar" loading="lazy"
-                             onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
-                        <div class="sc-identity">
-                            <div class="sc-name">${safeName}${frozenBadge}</div>
-                            <div class="sc-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
-                        </div>
-                        <span class="sc-status offline">○ ОФФЛАЙН</span>
-                    </div>
-                    <div class="sc-body">${lastSeenHtml}</div>
-                    <div class="sc-actions">
-                        <button class="sc-btn steam" onclick="App.openSteamProfile('${safeId}')">Steam</button>
-                        <button class="sc-btn fear" onclick="App.openFearProfile('${safeId}')">Fear</button>
-                    </div>
-                `;
-                offlineEl.appendChild(card);
-            }
+            for (const admin of online)  onlineEl.appendChild(this._makeCard(admin, onlineMap[admin.steamid]));
+            for (const admin of offline) offlineEl.appendChild(this._makeCard(admin, null));
         }
+    },
+
+    _makeCard(admin, player) {
+        const isOnline = !!player;
+        const card = document.createElement('div');
+        card.className = `staff-card ${isOnline ? 'online' : ''} ${admin.is_frozen ? 'frozen' : ''}`;
+
+        const safeId     = escapeHtml(admin.steamid);
+        const safeName   = escapeHtml(admin.name);
+        const safeAvatar = escapeHtml(admin.avatar_full || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg');
+        const frozenBadge = admin.is_frozen ? `<span class="staff-frozen">❄ Заморожен</span>` : '';
+        const fearLastSeen = playerLastSeenOnFear[admin.steamid];
+
+        let onlineInfo = '';
+        if (isOnline) {
+            const safeServer = escapeHtml(player.server?.name || '');
+            const safeMap    = escapeHtml(player.server?.map || '');
+            const safeAddr   = escapeHtml(`${player.server?.ip}:${player.server?.port}`);
+            const teamClass  = player.team === 'ct' ? 'team-ct' : (player.team === 't' ? 'team-t' : 'team-spec');
+            const teamLabel  = player.team === 'ct' ? 'CT' : (player.team === 't' ? 'T' : 'SPEC');
+            const gameTag    = getServerGameTag(player.server?.ip, player.server?.port);
+            onlineInfo = `
+                <div class="sc-server-row">
+                    <span class="player-team ${teamClass}">${teamLabel}</span>
+                    <span class="sc-server-name">${safeServer} ${gameTag}</span>
+                </div>
+                <div class="sc-map-row">
+                    <span class="sc-map">🗺️ ${safeMap}</span>
+                    <span class="sc-kd">K/D: ${UI.calculateKD(player.kills, player.deaths)}</span>
+                </div>
+                <button class="sc-connect-btn" onclick="App.connectToServer('${safeAddr}')">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Connect
+                </button>`;
+        }
+
+        const lastSeenHtml = !isOnline && fearLastSeen
+            ? `<div class="sc-last-seen">👁 ${UI.formatDateTime(fearLastSeen)} <span>(${UI.getTimeAgo(fearLastSeen)})</span></div>`
+            : '';
+
+        const displayName = escapeHtml(getCustomNick(admin.steamid) || safeName);
+
+        card.innerHTML = `
+            <div class="sc-top">
+                <img src="${safeAvatar}" class="sc-avatar ${isOnline ? 'online' : ''}" loading="lazy"
+                     onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
+                <div class="sc-identity">
+                    <div class="sc-name">${displayName}${frozenBadge}</div>
+                    <div class="sc-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
+                </div>
+                <span class="sc-status ${isOnline ? 'online' : 'offline'}">${isOnline ? '● ОНЛАЙН' : '○ ОФФЛАЙН'}</span>
+            </div>
+            <div class="sc-body">${onlineInfo}${lastSeenHtml}</div>
+            <div class="sc-actions">
+                <button class="sc-btn steam" onclick="App.openSteamProfile('${safeId}')">Steam</button>
+                <button class="sc-btn fear" onclick="App.openFearProfile('${safeId}')">Fear</button>
+            </div>
+        `;
+        return card;
     },
 
     toggleOffline(btn, id) {
@@ -647,6 +598,58 @@ const PaidManager = {
         // Сохраняем состояние
         if (visible) this._openOffline.delete(id);
         else this._openOffline.add(id);
+    }
+};
+
+// ── STAFF TAB ────────────────────────────────
+const StaffTab = {
+    _current: 'staff', // 'staff' | 'paid'
+
+    open() {
+        this._current = 'staff';
+        this._render();
+    },
+
+    switch(tab, btn) {
+        this._current = tab;
+        document.querySelectorAll('.staff-new-tab').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        this._render();
+    },
+
+    _render() {
+        const body = document.getElementById('staff-new-body');
+        if (!body) return;
+        body.innerHTML = '';
+
+        const onlineMap = Object.fromEntries(allPlayers.map(p => [p.steam_id, p]));
+
+        if (this._current === 'staff') {
+            StaffManager.renderInto(body, onlineMap);
+        } else {
+            PaidManager.renderInto(body, onlineMap);
+        }
+    },
+
+    updateBadges() {
+        const onlineMap = Object.fromEntries(allPlayers.map(p => [p.steam_id, p]));
+        const staffOnline = StaffManager.admins.filter(a => onlineMap[a.steamid]).length;
+        const paidOnline  = PaidManager.admins.filter(a => onlineMap[a.steamid]).length;
+        const b1 = document.getElementById('staff-badge-staff');
+        const b2 = document.getElementById('staff-badge-paid');
+        const b3 = document.getElementById('staff-online-badge');
+        if (b1) b1.textContent = staffOnline;
+        if (b2) b2.textContent = paidOnline;
+        if (b3) b3.textContent = staffOnline;
+    },
+
+    tick(players) {
+        this.updateBadges();
+        // Перерисовываем только если вкладка открыта
+        const tab = document.getElementById('tab-staff-combined');
+        if (tab && tab.classList.contains('active')) {
+            this._render();
+        }
     }
 };
 
@@ -713,12 +716,11 @@ const StaffManager = {
     },
 
     render(onlineMap) {
-        // Ищем контейнер: сначала в staff-combined-body, потом глобально
-        const activeBody = document.getElementById('staff-combined-body');
-        let container = null;
-        if (activeBody) container = activeBody.querySelector('[data-staff-container]') || activeBody.querySelector('.staff-groups');
-        if (!container) container = document.getElementById('staff-groups');
-        if (!container) return;
+        // Теперь рендерим через StaffTab
+        StaffTab.tick(allPlayers);
+    },
+
+    renderInto(container, onlineMap) {
         container.innerHTML = '';
 
         if (this.admins.length === 0) {
@@ -726,7 +728,6 @@ const StaffManager = {
             return;
         }
 
-        // Группируем по group_name в нужном порядке
         const grouped = {};
         for (const a of this.admins) {
             if (!grouped[a.group_name]) grouped[a.group_name] = { display: a.group_display_name, members: [] };
@@ -739,12 +740,11 @@ const StaffManager = {
 
             const online = group.members.filter(a => onlineMap[a.steamid]);
             const offline = group.members.filter(a => !onlineMap[a.steamid]);
+            const groupColor = { STAFF: 'cyan', STADMIN: 'purple', STMODER: 'blue', MODER: 'green', MLMODER: 'orange', MEDIA: 'yellow' }[gname] || 'cyan';
+            const safeGid = gname.replace(/[^a-zA-Z0-9]/g, '_');
 
             const section = document.createElement('div');
             section.className = 'staff-section';
-
-            const groupColor = { STAFF: 'cyan', STADMIN: 'purple', STMODER: 'blue', MODER: 'green', MLMODER: 'orange', MEDIA: 'yellow' }[gname] || 'cyan';
-
             section.innerHTML = `
                 <div class="staff-section-head">
                     <span class="col-icon ${groupColor}">
@@ -753,81 +753,76 @@ const StaffManager = {
                     <span class="staff-group-name">${escapeHtml(group.display)}</span>
                     <span class="staff-group-count ${groupColor}">${online.length} онлайн / ${group.members.length} всего</span>
                 </div>
-                <div class="staff-members" id="staff-group-${gname}"></div>
+                <div class="staff-members" id="snew-group-${safeGid}"></div>
             `;
             container.appendChild(section);
-
-            const membersEl = section.querySelector(`#staff-group-${gname}`);
-
-            // Сначала онлайн, потом оффлайн
+            const membersEl = section.querySelector(`#snew-group-${safeGid}`);
             for (const admin of [...online, ...offline]) {
-                const player = onlineMap[admin.steamid];
-                const isOnline = !!player;
-                const card = document.createElement('div');
-                card.className = `staff-card ${isOnline ? 'online' : ''}`;
-
-                const safeId   = escapeHtml(admin.steamid);
-                const safeName = escapeHtml(admin.name);
-                const safeAvatar = escapeHtml(admin.avatar_full || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg');
-                const frozenBadge = admin.is_frozen ? `<span class="staff-frozen">❄ Заморожен</span>` : '';
-                const fearLastSeenAdmin = playerLastSeenOnFear[admin.steamid];
-
-                let onlineInfo = '';
-                if (isOnline) {
-                    const safeServer = escapeHtml(player.server?.name || '');
-                    const safeMap    = escapeHtml(player.server?.map || '');
-                    const safeAddr   = escapeHtml(`${player.server?.ip}:${player.server?.port}`);
-                    const teamClass  = player.team === 'ct' ? 'team-ct' : (player.team === 't' ? 'team-t' : 'team-spec');
-                    const teamLabel  = player.team === 'ct' ? 'CT' : (player.team === 't' ? 'T' : 'SPEC');
-                    const gameTag    = getServerGameTag(player.server?.ip, player.server?.port);
-                    const kd         = UI.calculateKD(player.kills, player.deaths);
-                    onlineInfo = `
-                        <div class="sc-server-row">
-                            <span class="player-team ${teamClass}">${teamLabel}</span>
-                            <span class="sc-server-name">${safeServer} ${gameTag}</span>
-                        </div>
-                        <div class="sc-map-row">
-                            <span class="sc-map">🗺️ ${safeMap}</span>
-                            <span class="sc-kd">K/D: ${kd}</span>
-                        </div>
-                        <button class="sc-connect-btn" onclick="App.connectToServer('${safeAddr}')">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                            Connect
-                        </button>`;
-                }
-
-                const lastSeenHtml = !isOnline && fearLastSeenAdmin
-                    ? `<div class="sc-last-seen">👁 ${UI.formatDateTime(fearLastSeenAdmin)} <span>(${UI.getTimeAgo(fearLastSeenAdmin)})</span></div>`
-                    : '';
-
-                const displayName = (() => {
-                    const cn = getCustomNick(admin.steamid);
-                    return cn || safeName;
-                })();
-
-                card.innerHTML = `
-                    <div class="sc-top">
-                        <img src="${safeAvatar}" class="sc-avatar ${isOnline ? 'online' : ''}" loading="lazy"
-                             onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
-                        <div class="sc-identity">
-                            <div class="sc-name">${escapeHtml(displayName)}${frozenBadge}</div>
-                            <div class="sc-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
-                        </div>
-                        <span class="sc-status ${isOnline ? 'online' : 'offline'}">${isOnline ? '● ОНЛАЙН' : '○ ОФФЛАЙН'}</span>
-                    </div>
-                    <div class="sc-body">
-                        ${onlineInfo}
-                        ${lastSeenHtml}
-                    </div>
-                    <div class="sc-actions">
-                        <button class="sc-btn steam" onclick="App.openSteamProfile('${safeId}')">Steam</button>
-                        <button class="sc-btn fear" onclick="App.openFearProfile('${safeId}')">Fear</button>
-                    </div>
-                `;
-                membersEl.appendChild(card);
+                membersEl.appendChild(this._makeCard(admin, onlineMap[admin.steamid]));
             }
         }
-    }
+    },
+
+    _makeCard(admin, player) {
+        const isOnline = !!player;
+        const card = document.createElement('div');
+        card.className = `staff-card ${isOnline ? 'online' : ''} ${admin.is_frozen ? 'frozen' : ''}`;
+
+        const safeId     = escapeHtml(admin.steamid);
+        const safeName   = escapeHtml(admin.name);
+        const safeAvatar = escapeHtml(admin.avatar_full || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg');
+        const frozenBadge = admin.is_frozen ? `<span class="staff-frozen">❄ Заморожен</span>` : '';
+        const fearLastSeenAdmin = playerLastSeenOnFear[admin.steamid];
+
+        let onlineInfo = '';
+        if (isOnline) {
+            const safeServer = escapeHtml(player.server?.name || '');
+            const safeMap    = escapeHtml(player.server?.map || '');
+            const safeAddr   = escapeHtml(`${player.server?.ip}:${player.server?.port}`);
+            const teamClass  = player.team === 'ct' ? 'team-ct' : (player.team === 't' ? 'team-t' : 'team-spec');
+            const teamLabel  = player.team === 'ct' ? 'CT' : (player.team === 't' ? 'T' : 'SPEC');
+            const gameTag    = getServerGameTag(player.server?.ip, player.server?.port);
+            const kd         = UI.calculateKD(player.kills, player.deaths);
+            onlineInfo = `
+                <div class="sc-server-row">
+                    <span class="player-team ${teamClass}">${teamLabel}</span>
+                    <span class="sc-server-name">${safeServer} ${gameTag}</span>
+                </div>
+                <div class="sc-map-row">
+                    <span class="sc-map">🗺️ ${safeMap}</span>
+                    <span class="sc-kd">K/D: ${kd}</span>
+                </div>
+                <button class="sc-connect-btn" onclick="App.connectToServer('${safeAddr}')">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Connect
+                </button>`;
+        }
+
+        const lastSeenHtml = !isOnline && fearLastSeenAdmin
+            ? `<div class="sc-last-seen">👁 ${UI.formatDateTime(fearLastSeenAdmin)} <span>(${UI.getTimeAgo(fearLastSeenAdmin)})</span></div>`
+            : '';
+
+        const displayName = (() => { const cn = getCustomNick(admin.steamid); return cn || safeName; })();
+
+        card.innerHTML = `
+            <div class="sc-top">
+                <img src="${safeAvatar}" class="sc-avatar ${isOnline ? 'online' : ''}" loading="lazy"
+                     onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
+                <div class="sc-identity">
+                    <div class="sc-name">${escapeHtml(displayName)}${frozenBadge}</div>
+                    <div class="sc-steamid" onclick="App.copyToClipboard('${safeId}')">${safeId}</div>
+                </div>
+                <span class="sc-status ${isOnline ? 'online' : 'offline'}">${isOnline ? '● ОНЛАЙН' : '○ ОФФЛАЙН'}</span>
+            </div>
+            <div class="sc-body">${onlineInfo}${lastSeenHtml}</div>
+            <div class="sc-actions">
+                <button class="sc-btn steam" onclick="App.openSteamProfile('${safeId}')">Steam</button>
+                <button class="sc-btn fear" onclick="App.openFearProfile('${safeId}')">Fear</button>
+            </div>
+        `;
+        return card;
+    },
+
 };
 
 // ── TRACKED MANAGER ─────────────────────────
@@ -1417,10 +1412,7 @@ const App = {
                     StaffStatsManager.open();
                 }
         if (tab === 'staff-combined') {
-            // Принудительно сбрасываем на дефолт при каждом открытии
-            App._combinedSubTabs['staff-combined'] = App._combinedSubTabs['staff-combined'] === 'staff' || App._combinedSubTabs['staff-combined'] === 'paid'
-                ? App._combinedSubTabs['staff-combined'] : 'staff';
-            App._openCombinedSubTab('staff-combined');
+            StaffTab.open();
         }
                 if (tab === 'playercheck') {
                     PlayerCheckManager.open();
@@ -1487,8 +1479,7 @@ const App = {
         this.updateStats();
         this.filterPlayers();
         TrackedManager.tick(allPlayers);
-        StaffManager.tick(allPlayers);
-        PaidManager.tick(allPlayers);
+        StaffTab.tick(allPlayers);
         this._reportSeenAdmins(allPlayers);
         const el = document.getElementById('last-update');
         if (el) el.textContent = new Date().toLocaleTimeString('ru-RU');
