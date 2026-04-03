@@ -424,162 +424,53 @@
         </div>
     </div>
 
-    <!-- BANS TAB -->
-    <div class="tab-content" id="tab-bans">
-        <div class="bans-layout">
-            <div id="bans-stats" class="bans-stats" style="display:none"></div>
-            <div id="bans-months" class="bans-months" style="display:none"></div>
-                        <div id="bans-list" class="bans-list">
-                <div class="empty"><span class="empty-emoji">🔨</span><p>Открой вкладку чтобы загрузить наказания</p></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- STAFF STATS TAB -->
-    <div class="tab-content" id="tab-staffstats">
-        <div class="staffstats-layout">
-            <div class="staffstats-header">
-                <div class="staffstats-title">📊 Статистика стаффа</div>
-                <div class="staffstats-controls">
-                    <div class="ss-month-select" id="ss-month-select" data-role="month-select">
-                        <div class="ss-month-selected" data-role="month-trigger" onclick="StaffStatsManager.toggleDropdown(this)">
-                            <span id="ss-month-label" data-role="month-label">Загрузка...</span>
-                            <span class="bans-month-arrow">▼</span>
-                        </div>
-                        <div class="ss-month-dropdown" id="ss-month-dropdown" data-role="month-dropdown"></div>
-                    </div>
-                    <button class="ss-refresh-btn" onclick="StaffStatsManager.refresh()">
-                        🔄 Обновить
-                    </button>
-                </div>
-            </div>
-            <div id="staffstats-progress" style="display:none" class="ss-progress-wrap">
-                <div class="ss-progress-bar"><div class="ss-progress-fill" id="ss-progress-fill"></div></div>
-                <div class="ss-progress-text" id="ss-progress-text">Загрузка...</div>
-            </div>
-            <div class="staff-record-block">
-                <span class="staff-record-icon">🏆</span>
-                <span class="staff-record-text">Рекорд: <strong id="staff-record-count">810</strong> наказаний — <strong id="staff-record-author">молочный</strong></span>
-            </div>
-            <div id="staffstats-list" class="staffstats-list">
-                <div class="empty"><span class="empty-emoji">📊</span><p>Открой вкладку чтобы загрузить статистику</p></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- CHECKER TAB -->
-    <div class="tab-content" id="tab-checker">
-        <div class="checker-layout">
-            <div class="checker-header">
-                <div class="checker-title">🔍 Чекер банов</div>
-                <div class="checker-controls">
-                    <label class="checker-upload-btn" for="checker-file-input">
-                        📁 Загрузить config.vdf
-                        <input type="file" id="checker-file-input" accept=".vdf,.txt" style="display:none">
-                    </label>
-                    <input type="text" id="checker-manual-input" class="checker-input" placeholder="или введи SteamID вручную...">
-                    <button class="checker-check-btn" onclick="CheckerManager.checkManual()">Проверить</button>
-                    <button class="checker-clear-btn" onclick="CheckerManager.clear()">Очистить</button>
-                </div>
-                <div class="checker-stats-row" id="checker-stats-row" style="display:none">
-                    <span class="checker-stat clean">✅ <span id="checker-stat-clean">0</span> чистых</span>
-                    <span class="checker-stat banned">🔨 <span id="checker-stat-banned">0</span> забанено</span>
-                    <span class="checker-stat noreg">❓ <span id="checker-stat-noreg">0</span> не зарег.</span>
-                    <span class="checker-stat total">📋 <span id="checker-stat-total">0</span> всего</span>
-                </div>
-            </div>
-            <div id="checker-progress" class="checker-progress-wrap" style="display:none">
-                <div class="checker-progress-bar"><div class="checker-progress-fill" id="checker-progress-fill"></div></div>
-                <div class="checker-progress-text" id="checker-progress-text">Проверяем...</div>
-            </div>
-            <div id="checker-list" class="checker-list">
-                <div class="empty"><span class="empty-emoji">🔍</span><p>Загрузи config.vdf или введи SteamID</p></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- PUBCHECKER TAB -->
-    <div class="tab-content" id="tab-pubchecker">
-        <div class="pubchecker-layout">
-            <div class="pubchecker-header">
-                <div class="pubchecker-title">🌐 Паблик баны</div>
-                <div class="pubchecker-controls">
-                    <div class="pubchecker-sources" id="pubchecker-sources">
-                        <button class="pub-src-btn active" data-src="yooma" onclick="PubChecker.toggleSource('yooma', this)">yooma.su</button>
-                        <button class="pub-src-btn" data-src="cs2red" onclick="PubChecker.toggleSource('cs2red', this)">cs2red.ru</button>
-                    </div>
-                    <button class="pubchecker-refresh-btn" onclick="PubChecker.refresh()">🔄 Обновить</button>
-                    <button class="pubchecker-refresh-btn" onclick="PubChecker.refreshCache()" style="margin-left:4px" title="Обновить кеш банов yooma">🔃 Обновить кеш</button>
-                </div>
-                <div class="pubchecker-stats-row" id="pubchecker-stats-row" style="display:none">
-                    <span class="pub-stat">🔨 <span id="pub-stat-banned">0</span> забанено</span>
-                    <span class="pub-stat">👥 <span id="pub-stat-total">0</span> игроков</span>
-                    <span class="pub-stat updated">🕐 <span id="pub-stat-updated">—</span></span>
-                </div>
-            </div>
-            <div id="pubchecker-progress" class="pubchecker-progress-wrap" style="display:none">
-                <div class="pubchecker-progress-bar"><div class="pubchecker-progress-fill" id="pubchecker-progress-fill"></div></div>
-                <div class="pubchecker-progress-text" id="pubchecker-progress-text">Проверяем...</div>
-            </div>
-            <div id="pubchecker-list" class="pubchecker-list">
-                <div class="empty"><span class="empty-emoji">🌐</span><p>Открой вкладку чтобы начать проверку</p></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- REPORTS TAB -->
-    <div class="tab-content" id="tab-reports">
-        <div class="reports-layout">
-            <div class="reports-header">
-                <div class="reports-title">🚨 Репорты</div>
-                <div class="reports-tabs">
-                    <button class="rep-tab-btn active" data-reptab="new" onclick="ReportsManager.switchTab('new', this)">Новые</button>
-                    <button class="rep-tab-btn" data-reptab="open" onclick="ReportsManager.switchTab('open', this)">Открытые</button>
-                </div>
-                <button class="reports-refresh-btn" onclick="ReportsManager.refresh()">🔄 Обновить</button>
-                <button class="rep-btn-close-offline" id="rep-close-offline-btn" style="display:none" onclick="ReportsManager.closeOfflineConfirm()">🔴 Закрыть офлайн</button>
-                <button class="rep-btn-auto-toggle" id="rep-auto-toggle-btn" style="display:none" onclick="ReportsManager.toggleAutoClose()">⚙️ Авто: выкл</button>
-                <button class="rep-btn-auto-toggle" id="rep-settings-btn" style="display:none" onclick="ReportsManager.showSettings()" title="Настройки авто-закрытия">🔧</button>
-            </div>
-            <div id="reports-progress" class="reports-progress-wrap" style="display:none">
-                <div class="reports-progress-bar"><div class="reports-progress-fill" id="reports-progress-fill"></div></div>
-                <div class="reports-progress-text" id="reports-progress-text">Загрузка...</div>
-            </div>
-            <div id="reports-list" class="reports-list">
-                <div class="empty"><span class="empty-emoji">🚨</span><p>Открой вкладку чтобы загрузить репорты</p></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- REPORTS DETAIL MODAL -->
-    <div id="reports-modal" class="reports-modal" style="display:none">
-        <div class="reports-modal-overlay" onclick="ReportsManager.closeModal()"></div>
-        <div class="reports-modal-content">
-            <div class="reports-modal-left" id="reports-modal-left"></div>
-            <div class="reports-modal-right" id="reports-modal-right"></div>
-        </div>
-    </div>
-
-    <!-- REPORTS CLOSE MODAL -->
-    <div id="reports-close-modal" class="reports-close-modal" style="display:none">
-        <div class="reports-modal-overlay" onclick="ReportsManager.closeCloseModal()"></div>
-        <div class="reports-close-content" id="reports-close-content"></div>
-    </div>
-
-    <!-- SERVERS TAB -->
-    <div class="tab-content" id="tab-servers">
-        <div class="servers-layout" id="servers-layout">
-            <div class="empty"><span class="empty-emoji">🖥️</span><p>Загрузка серверов...</p></div>
-        </div>
-    </div>
-
-    <!-- NORMA COMBINED TAB: Норма + Статистика стаффа -->
+                <!-- NORMA COMBINED TAB: содержит Норма (баны) и Статистика стаффа -->
     <div class="tab-content" id="tab-norma-combined">
-        <div class="combined-tab-header">
-            <button class="combined-tab-btn active" data-subtab="bans" onclick="App.switchSubTab('norma-combined','bans',this)">📋 Норма</button>
-            <button class="combined-tab-btn" data-subtab="staffstats" onclick="App.switchSubTab('norma-combined','staffstats',this)">📊 Статистика стаффа</button>
+        <div style="display:flex;flex-direction:column;height:100vh;overflow:hidden">
+            <div class="combined-tab-header">
+                <button class="combined-tab-btn active" data-subtab="bans" onclick="App.switchSubTab('norma-combined','bans',this)">📋 Норма</button>
+                <button class="combined-tab-btn" data-subtab="staffstats" id="norma-staffstats-btn" onclick="App.switchSubTab('norma-combined','staffstats',this)">📊 Статистика стаффа</button>
+            </div>
+            <!-- Панель Норма (Баны) — всегда в DOM, переключается display -->
+            <div id="tab-bans" style="flex:1;overflow-y:auto;min-height:0;display:block">
+                <div class="bans-layout">
+                    <div id="bans-stats" class="bans-stats" style="display:none"></div>
+                    <div id="bans-months" class="bans-months" style="display:none"></div>
+                    <div id="bans-list" class="bans-list">
+                        <div class="empty"><span class="empty-emoji">🔨</span><p>Открой вкладку чтобы загрузить наказания</p></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Панель Статистика стаффа — всегда в DOM, переключается display -->
+            <div id="tab-staffstats" style="flex:1;overflow-y:auto;min-height:0;display:none">
+                <div class="staffstats-layout">
+                    <div class="staffstats-header">
+                        <div class="staffstats-title">📊 Статистика стаффа</div>
+                        <div class="staffstats-controls">
+                            <div class="ss-month-select" id="ss-month-select" data-role="month-select">
+                                <div class="ss-month-selected" data-role="month-trigger" onclick="StaffStatsManager.toggleDropdown(this)">
+                                    <span id="ss-month-label" data-role="month-label">Загрузка...</span>
+                                    <span class="bans-month-arrow">▼</span>
+                                </div>
+                                <div class="ss-month-dropdown" id="ss-month-dropdown" data-role="month-dropdown"></div>
+                            </div>
+                            <button class="ss-refresh-btn" onclick="StaffStatsManager.refresh()">🔄 Обновить</button>
+                        </div>
+                    </div>
+                    <div id="staffstats-progress" style="display:none" class="ss-progress-wrap">
+                        <div class="ss-progress-bar"><div class="ss-progress-fill" id="ss-progress-fill"></div></div>
+                        <div class="ss-progress-text" id="ss-progress-text">Загрузка...</div>
+                    </div>
+                    <div class="staff-record-block">
+                        <span class="staff-record-icon">🏆</span>
+                        <span class="staff-record-text">Рекорд: <strong id="staff-record-count">810</strong> наказаний — <strong id="staff-record-author">молочный</strong></span>
+                    </div>
+                    <div id="staffstats-list" class="staffstats-list">
+                        <div class="empty"><span class="empty-emoji">📊</span><p>Открой вкладку чтобы загрузить статистику</p></div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="combined-tab-body" id="norma-combined-body"></div>
     </div>
 
     <!-- STAFF COMBINED TAB: Стафф + Покупные -->
