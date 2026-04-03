@@ -408,30 +408,29 @@ body {
 .player-card.vac-banned:hover { border-color: rgba(255,61,61,.6); }
 
 /* ── PLAYER CARD (pc-*) ── */
-.pc-header {
-    display: flex; align-items: center; gap: 9px;
-    margin-bottom: 8px;
+.pc-row1 {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 7px;
 }
 .pc-avatar-wrap { position: relative; flex-shrink: 0; }
 .pc-avatar {
-    width: 40px; height: 40px; border-radius: 8px;
+    width: 36px; height: 36px; border-radius: 6px;
     object-fit: cover; border: 2px solid rgba(255,255,255,.1);
     background: var(--bg2); display: block;
 }
-.pc-avatar.unconfigured { border-color: rgba(255,171,0,.6); }
-.pc-avatar.clean        { border-color: rgba(0,230,118,.6); }
-.pc-avatar.vac          { border-color: rgba(255,61,61,.6); }
+.pc-avatar.unconfigured { border-color: rgba(255,171,0,.5); }
+.pc-avatar.clean        { border-color: rgba(0,230,118,.5); }
+.pc-avatar.vac          { border-color: rgba(255,61,61,.5); }
 .pc-admin-dot {
     position: absolute; top: -4px; right: -4px;
-    background: linear-gradient(135deg,#dc2626,#ff3d8a);
-    color: #fff; font-size: 7px; font-weight: 900;
-    padding: 1px 4px; border-radius: 3px; letter-spacing: .4px;
+    background: #dc2626; color: #fff;
+    font-size: 7px; font-weight: 900;
+    padding: 1px 3px; border-radius: 3px;
 }
 .pc-identity { flex: 1; min-width: 0; }
 .pc-name {
     font-size: 13px; font-weight: 700; color: #fff;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    margin-bottom: 1px;
 }
 .pc-steamid {
     font-size: 10px; font-family: monospace; color: var(--t3);
@@ -440,16 +439,14 @@ body {
 }
 .pc-steamid:hover { color: var(--cyan); }
 
-/* ── INFO ROW: дата слева, сервер справа ── */
-.pc-info-row {
-    display: flex; gap: 6px; margin-bottom: 8px;
+.pc-row2 {
+    display: flex; gap: 6px; margin-bottom: 7px;
 }
 .pc-date-block {
     flex: 1; min-width: 0;
-    display: flex; align-items: flex-start; gap: 6px;
-    background: rgba(0,240,255,.05);
-    border: 1px solid rgba(0,240,255,.15);
-    border-radius: 7px; padding: 6px 8px;
+    display: flex; align-items: flex-start; gap: 5px;
+    background: rgba(0,240,255,.05); border: 1px solid rgba(0,240,255,.15);
+    border-radius: 6px; padding: 5px 7px;
 }
 .pc-date-block.new    { background: rgba(255,61,61,.05);  border-color: rgba(255,61,61,.2); }
 .pc-date-block.medium { background: rgba(255,171,0,.05);  border-color: rgba(255,171,0,.2); }
@@ -462,21 +459,20 @@ body {
 .pc-date-block.new .pc-date-main    { color: var(--red); }
 .pc-date-block.medium .pc-date-main { color: var(--orange); }
 .pc-date-block.old .pc-date-main    { color: var(--green); }
-.pc-date-ago { font-size: 10px; color: var(--t3); margin-top: 1px; }
+.pc-date-ago { font-size: 10px; color: var(--t3); }
 
 .pc-server-block {
     flex: 1; min-width: 0;
-    background: rgba(0,0,0,.3);
-    border: 1px solid rgba(255,255,255,.07);
-    border-radius: 7px; padding: 6px 8px;
+    background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.07);
+    border-radius: 6px; padding: 5px 7px;
     display: flex; flex-direction: column; gap: 2px;
 }
-.pc-server-row { display: flex; align-items: center; gap: 5px; }
+.pc-server-row { display: flex; align-items: center; gap: 4px; }
 .pc-server-name {
     font-size: 11px; font-weight: 700; color: var(--t1);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.pc-server-map, .pc-server-addr {
+.pc-server-map {
     font-size: 10px; color: var(--t2);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -484,64 +480,58 @@ body {
 .pc-last-seen span { color: var(--green); }
 
 /* ── STATS ── */
-.pc-stats { display: flex; gap: 5px; margin-bottom: 7px; }
+.pc-stats { display: flex; gap: 4px; margin-bottom: 6px; }
 .pc-stat {
     flex: 1; background: rgba(0,0,0,.35);
     border: 1px solid rgba(255,255,255,.06);
-    border-radius: 7px; padding: 6px 4px; text-align: center;
+    border-radius: 6px; padding: 5px 4px; text-align: center;
 }
 .pc-stat-label {
     display: block; font-size: 9px; font-weight: 600;
-    color: var(--t3); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 2px;
+    color: var(--t3); text-transform: uppercase; letter-spacing: .3px; margin-bottom: 1px;
 }
-.pc-stat-val { display: block; font-size: 18px; font-weight: 800; }
-.pc-stat-val.kills  { color: var(--green); text-shadow: 0 0 8px rgba(0,230,118,.4); }
-.pc-stat-val.deaths { color: var(--red);   text-shadow: 0 0 8px rgba(255,61,61,.4); }
-.pc-stat-val.ping   { color: var(--yellow);text-shadow: 0 0 8px rgba(255,224,51,.4); }
-.pc-stat-val.ping.ping-high   { color: var(--red);    text-shadow: 0 0 8px rgba(255,61,61,.4); }
-.pc-stat-val.ping.ping-medium { color: var(--orange); text-shadow: 0 0 8px rgba(255,171,0,.4); }
+.pc-stat-val { display: block; font-size: 16px; font-weight: 800; }
+.pc-stat-val.kills  { color: var(--green); }
+.pc-stat-val.deaths { color: var(--red); }
+.pc-stat-val.ping   { color: var(--yellow); }
+.pc-stat-val.ping.ping-high   { color: var(--red); }
+.pc-stat-val.ping.ping-medium { color: var(--orange); }
 
-/* ── ACTIONS ── */
-.pc-actions-row1 {
-    display: grid; grid-template-columns: 1fr 1fr 1fr;
-    gap: 4px; margin-bottom: 4px;
-}
-.pc-actions-row2 {
-    display: grid; grid-template-columns: 1fr 2fr;
-    gap: 4px; margin-bottom: 5px;
-}
+/* ── BUTTONS ── */
+.pc-btns1 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-bottom: 4px; }
+.pc-btns2 { display: grid; grid-template-columns: 1fr 2fr; gap: 4px; margin-bottom: 4px; }
+.pc-btns3 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+
 .pc-btn-flat {
-    display: flex; align-items: center; justify-content: center; gap: 4px;
-    padding: 7px 4px; border-radius: 6px;
+    padding: 6px 4px; border-radius: 5px;
     font-size: 10px; font-weight: 600; font-family: inherit;
-    cursor: pointer;
+    cursor: pointer; text-align: center;
     background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: var(--t2);
-    transition: all .15s; white-space: nowrap; overflow: hidden;
+    transition: all .15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.pc-btn-flat:hover { background: rgba(255,255,255,.1); color: var(--t1); border-color: rgba(255,255,255,.2); }
-.pc-btn-primary {
-    display: flex; align-items: center; justify-content: center; gap: 5px;
-    padding: 8px; border-radius: 6px;
-    font-size: 11px; font-weight: 700; font-family: inherit;
-    cursor: pointer; border: none;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: #fff; box-shadow: 0 2px 10px rgba(99,102,241,.4);
-    transition: all .15s;
-}
-.pc-btn-primary:hover { box-shadow: 0 4px 16px rgba(99,102,241,.6); transform: translateY(-1px); }
+.pc-btn-flat:hover { background: rgba(255,255,255,.1); color: var(--t1); }
 
-.pc-extra-actions { display: flex; gap: 4px; }
+.pc-btn-primary {
+    padding: 7px; border-radius: 5px;
+    font-size: 11px; font-weight: 700; font-family: inherit;
+    cursor: pointer; border: none; text-align: center;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff; transition: opacity .15s;
+}
+.pc-btn-primary:hover { opacity: .85; }
+
 .pc-btn-sm {
-    flex: 1; padding: 5px 6px; border-radius: 6px;
+    padding: 6px 4px; border-radius: 5px; text-align: center;
     font-size: 10px; font-weight: 600; font-family: inherit;
     cursor: pointer; border: 1px solid rgba(255,255,255,.08);
     background: rgba(255,255,255,.04); color: var(--t2); transition: all .15s;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pc-btn-sm:hover { background: rgba(255,255,255,.09); color: var(--t1); }
-.pc-btn-sm.success { border-color: rgba(0,230,118,.3); color: var(--green); background: rgba(0,230,118,.07); }
-.pc-btn-sm.success:hover { background: rgba(0,230,118,.14); }
-.pc-btn-sm.danger  { border-color: rgba(255,61,61,.3);  color: var(--red);   background: rgba(255,61,61,.07); }
-.pc-btn-sm.danger:hover  { background: rgba(255,61,61,.14); }
+.pc-btn-sm.success { border-color: rgba(0,230,118,.35); color: var(--green); background: rgba(0,230,118,.08); }
+.pc-btn-sm.success:hover { background: rgba(0,230,118,.15); }
+.pc-btn-sm.danger  { border-color: rgba(255,61,61,.35);  color: var(--red);   background: rgba(255,61,61,.08); }
+.pc-btn-sm.danger:hover  { background: rgba(255,61,61,.15); }
 
 .admin-badge {
     position: absolute; top: 13px; right: 13px;
