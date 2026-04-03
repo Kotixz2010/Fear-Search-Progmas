@@ -609,10 +609,13 @@ const StaffTab = {
         this._current = 'staff';
         // Сбрасываем активную кнопку
         document.querySelectorAll('.staff-new-tab').forEach((b, i) => b.classList.toggle('active', i === 0));
-        this._render();
-        // Если данных нет — грузим
+        // Если данных нет — показываем лоадер и грузим
         if (StaffManager.admins.length === 0) {
-            StaffManager.load().then(() => this._render());
+            const body = document.getElementById('staff-new-body');
+            if (body) body.innerHTML = '<div class="loader"><div class="loader-ring"></div><span>Загрузка стаффа...</span></div>';
+            StaffManager.load().then(() => { this._render(); this.updateBadges(); });
+        } else {
+            this._render();
         }
     },
 
@@ -1396,6 +1399,8 @@ const App = {
         document.querySelectorAll('.sidebar-nav-item, .tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const tab = btn.dataset.tab;
+                // Возвращаем DOM из norma-combined-body перед переключением
+                App._returnCombinedDom('norma-combined');
                 document.querySelectorAll('.sidebar-nav-item, .tab-btn').forEach(b => b.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active', 'tab-enter'));
                 btn.classList.add('active');
@@ -1410,15 +1415,14 @@ const App = {
                 } else if (tab === 'norma-combined') {
                     // Открываем активную подвкладку
                     App._openCombinedSubTab('norma-combined');
+                } else if (tab === 'staff-combined') {
+                    StaffTab.open();
                 } else {
                     BansManager.stopAuto();
                 }
                 if (tab === 'staffstats') {
                     StaffStatsManager.open();
                 }
-        if (tab === 'staff-combined') {
-            StaffTab.open();
-        }
                 if (tab === 'playercheck') {
                     PlayerCheckManager.open();
                 }
@@ -1571,8 +1575,8 @@ const App = {
         const body = document.getElementById(`${combined}-body`);
         if (!body) return;
 
-        // Переносим контент нужной вкладки в body
-        const source = document.getElementById(`tab-${validSubtab}`);
+        // Возвращаем DOM элементы обратно в их оригинальные вкладки перед перемещением
+        this._returnCombinedDom('norma-combined');
 
         body.innerHTML = '';
 
@@ -1584,6 +1588,14 @@ const App = {
             body.innerHTML = '<div class="staff-layout"><div class="staff-groups" data-paid-container></div></div>';
             const onlineMap = Object.fromEntries(allPlayers.map(p => [p.steam_id, p]));
             PaidManager.render(onlineMap);
+        } else if (validSubtab === 'bans') {
+            // Переносим реальный DOM из tab-bans
+            const src = document.getElementById('tab-bans');
+            if (src) Array.from(src.children).forEach(child => body.appendChild(child));
+        } else if (validSubtab === 'staffstats') {
+            // Переносим реальный DOM из tab-staffstats
+            const src = document.getElementById('tab-staffstats');
+            if (src) Array.from(src.children).forEach(child => body.appendChild(child));
         } else if (source) {
             Array.from(source.children).forEach(child => {
                 body.appendChild(child.cloneNode(true));
@@ -1613,6 +1625,23 @@ const App = {
             StaffStatsManager.open();
         }
         // staff и paid уже отрендерены выше напрямую
+    },
+
+    // Возвращает DOM элементы из norma-combined-body обратно в их оригинальные вкладки
+    _returnCombinedDom(combined) {
+        const body = document.getElementById(`${combined}-body`);
+        if (!body || body.children.length === 0) return;
+        // Определяем текущую активную подвкладку
+        const activeBtn = document.querySelector(`#tab-${combined} .combined-tab-btn.active`);
+        const currentSubtab = activeBtn?.dataset?.subtab;
+        if (currentSubtab === 'bans') {
+            const target = document.getElementById('tab-bans');
+            if (target) Array.from(body.children).forEach(child => target.appendChild(child));
+        } else if (currentSubtab === 'staffstats') {
+            const target = document.getElementById('tab-staffstats');
+            if (target) Array.from(body.children).forEach(child => target.appendChild(child));
+        }
+        body.innerHTML = '';
     },
 
     toggleCsgoPlayers(label) {
@@ -1888,12 +1917,16 @@ const BansManager = {
 
         // Если есть кешированные данные — показываем сразу
         const cached = this._lastResult[steamid];
+        const _getEl = (id) => document.querySelector(`#norma-combined-body #${id}`) || document.getElementById(id);
         if (firstLoad && cached?.bans?.length) {
             this.render(steamid, cached.bans, cached.mutes, true, 0);
         } else if (firstLoad) {
-            document.getElementById('bans-stats').style.display = 'none';
-            document.getElementById('bans-months').style.display = 'none';
-            document.getElementById('bans-list').innerHTML = `<div class="loader"><div class="loader-ring"></div><span>Загружаю наказания...</span></div>`;
+            const statsEl = _getEl('bans-stats');
+            const monthsEl = _getEl('bans-months');
+            const listEl = _getEl('bans-list');
+            if (statsEl) statsEl.style.display = 'none';
+            if (monthsEl) monthsEl.style.display = 'none';
+            if (listEl) listEl.innerHTML = `<div class="loader"><div class="loader-ring"></div><span>Загружаю наказания...</span></div>`;
         }
 
         try {
@@ -1933,7 +1966,8 @@ const BansManager = {
             }
         } catch (e) {
             if (firstLoad) {
-                document.getElementById('bans-list').innerHTML = `<div class="empty"><span class="empty-emoji">❌</span><p>${escapeHtml(e.message)}</p></div>`;
+                const listEl = (document.querySelector(`#norma-combined-body #bans-list`) || document.getElementById('bans-list'));
+                if (listEl) listEl.innerHTML = `<div class="empty"><span class="empty-emoji">❌</span><p>${escapeHtml(e.message)}</p></div>`;
             }
         } finally {
             this._loading = false;
@@ -1941,14 +1975,16 @@ const BansManager = {
     },
 
     _updateTimestamp() {
-        const el = document.getElementById('bans-updated-at');
+        const el = document.querySelector('#norma-combined-body #bans-updated-at') || document.getElementById('bans-updated-at');
         if (el) el.textContent = new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     },
 
     render(steamid, bans, mutes, fromCache, newCount = 0) {
-        const statsEl  = document.getElementById('bans-stats');
-        const monthsEl = document.getElementById('bans-months');
-        const listEl   = document.getElementById('bans-list');
+        // Ищем элементы в активном контейнере (norma-combined-body имеет приоритет)
+        const _getEl = (id) => document.querySelector(`#norma-combined-body #${id}`) || document.getElementById(id);
+        const statsEl  = _getEl('bans-stats');
+        const monthsEl = _getEl('bans-months');
+        const listEl   = _getEl('bans-list');
         const all = [...bans, ...mutes].sort((a, b) => b.created - a.created);
 
         // Снятые = status=2 (Разбанен/Размучен — снят вручную)
@@ -2444,15 +2480,15 @@ const StaffStatsManager = {
     open() {
         // Проверяем доступ
         const sid = AuthManager.user?.steamid || AuthManager.user?.steam_id || '';
-        const WHITELIST = new Set(['76561198751025670', '76561199645130988']);
         if (!OWNERS.has(sid)) {
-            document.getElementById('staffstats-list').innerHTML =
-                `<div class="empty"><span class="empty-emoji">🔒</span><p>Нет доступа</p></div>`;
+            const listEl = document.querySelector('#norma-combined-body #staffstats-list') || document.getElementById('staffstats-list');
+            if (listEl) listEl.innerHTML = `<div class="empty"><span class="empty-emoji">🔒</span><p>Нет доступа</p></div>`;
             return;
         }
         // Вставляем значения рекорда
-        const recCount = document.getElementById('staff-record-count');
-        const recAuthor = document.getElementById('staff-record-author');
+        const _getEl = (id) => document.querySelector(`#norma-combined-body #${id}`) || document.getElementById(id);
+        const recCount = _getEl('staff-record-count');
+        const recAuthor = _getEl('staff-record-author');
         if (recCount) recCount.textContent = STAFF_RECORD.count;
         if (recAuthor) recAuthor.textContent = STAFF_RECORD.author;
 
@@ -2480,8 +2516,8 @@ const StaffStatsManager = {
     async refresh() {
         const staff = this.getStaffList();
         if (staff.length === 0) {
-            document.getElementById('staffstats-list').innerHTML =
-                `<div class="empty"><span class="empty-emoji">👮</span><p>Список стаффа не загружен</p></div>`;
+            const listFallback = document.querySelector('#norma-combined-body #staffstats-list') || document.getElementById('staffstats-list');
+            if (listFallback) listFallback.innerHTML = `<div class="empty"><span class="empty-emoji">👮</span><p>Список стаффа не загружен</p></div>`;
             return;
         }
 
@@ -2489,10 +2525,12 @@ const StaffStatsManager = {
         this._loading = true;
         this._loaded = false;
 
-        const progressWrap = document.getElementById('staffstats-progress');
-        const progressFill = document.getElementById('ss-progress-fill');
-        const progressText = document.getElementById('ss-progress-text');
-        const listEl = document.getElementById('staffstats-list');
+        // Ищем элементы в активном контейнере (norma-combined-body имеет приоритет)
+        const _getEl = (id) => document.querySelector(`#norma-combined-body #${id}`) || document.getElementById(id);
+        const progressWrap = _getEl('staffstats-progress');
+        const progressFill = _getEl('ss-progress-fill');
+        const progressText = _getEl('ss-progress-text');
+        const listEl = _getEl('staffstats-list');
 
         // Показываем прогресс НЕМЕДЛЕННО
         if (progressWrap) { progressWrap.style.display = 'flex'; }
@@ -2520,7 +2558,7 @@ const StaffStatsManager = {
                         this._data[member.steamid] = { bans: [], mutes: [] };
                     }
                 }
-                progressFill.style.width = '100%';
+                if (progressFill) progressFill.style.width = '100%';
             } else {
                 throw new Error(`HTTP ${res.status}`);
             }
@@ -2546,8 +2584,8 @@ const StaffStatsManager = {
                         this._data[member.steamid] = { bans: [], mutes: [] };
                     }
                     done++;
-                    progressFill.style.width = Math.round(done / staff.length * 100) + '%';
-                    progressText.textContent = `Загружаю ${done} / ${staff.length}...`;
+                    if (progressFill) progressFill.style.width = Math.round(done / staff.length * 100) + '%';
+                    if (progressText) progressText.textContent = `Загружаю ${done} / ${staff.length}...`;
                     if (done % 3 === 0 || done === staff.length) {
                         this._buildMonths(); this._buildDropdown(); this._render();
                     }
@@ -2555,7 +2593,7 @@ const StaffStatsManager = {
             }
         }
 
-        progressWrap.style.display = 'none';
+        progressWrap?.style && (progressWrap.style.display = 'none');
         this._loading = false;
         this._loaded = true;
         try {
