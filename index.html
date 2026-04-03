@@ -429,7 +429,7 @@
         <div class="bans-layout">
             <div id="bans-stats" class="bans-stats" style="display:none"></div>
             <div id="bans-months" class="bans-months" style="display:none"></div>
-            <div id="bans-list" class="bans-list">
+                        <div id="bans-list" class="bans-list">
                 <div class="empty"><span class="empty-emoji">🔨</span><p>Открой вкладку чтобы загрузить наказания</p></div>
             </div>
         </div>
@@ -467,7 +467,7 @@
         </div>
     </div>
 
-        <!-- CHECKER TAB -->
+    <!-- CHECKER TAB -->
     <div class="tab-content" id="tab-checker">
         <div class="checker-layout">
             <div class="checker-header">
@@ -579,19 +579,25 @@
             <button class="combined-tab-btn active" data-subtab="bans" onclick="App.switchSubTab('norma-combined','bans',this)">📋 Норма</button>
             <button class="combined-tab-btn" data-subtab="staffstats" onclick="App.switchSubTab('norma-combined','staffstats',this)">📊 Статистика стаффа</button>
         </div>
-        <div class="combined-tab-body" id="norma-combined-body">
-            <!-- Контент подставляется динамически -->
-        </div>
+        <div class="combined-tab-body" id="norma-combined-body"></div>
     </div>
 
     <!-- STAFF COMBINED TAB: Стафф + Покупные -->
     <div class="tab-content" id="tab-staff-combined">
-        <div class="combined-tab-header">
-            <button class="combined-tab-btn active" data-subtab="staff" onclick="App.switchSubTab('staff-combined','staff',this)">👮 Стафф <span class="snav-badge" id="staff-online-badge2">0</span></button>
-            <button class="combined-tab-btn" data-subtab="paid" onclick="App.switchSubTab('staff-combined','paid',this)">💰 Покупные <span class="snav-badge" id="paid-online-badge2">0</span></button>
-        </div>
-        <div class="combined-tab-body" id="staff-combined-body">
-            <!-- Контент подставляется динамически -->
+        <div class="staff-new-layout">
+            <div class="staff-new-tabs">
+                <button class="staff-new-tab active" data-stab="staff" onclick="StaffTab.switch('staff', this)">
+                    👮 Стафф
+                    <span class="staff-new-badge" id="staff-badge-staff">0</span>
+                </button>
+                <button class="staff-new-tab" data-stab="paid" onclick="StaffTab.switch('paid', this)">
+                    💰 Покупные
+                    <span class="staff-new-badge" id="staff-badge-paid">0</span>
+                </button>
+            </div>
+            <div class="staff-new-body" id="staff-new-body">
+                <div class="loader"><div class="loader-ring"></div><span>Загрузка...</span></div>
+            </div>
         </div>
     </div>
 
