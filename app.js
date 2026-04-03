@@ -478,9 +478,11 @@ const PaidManager = {
     },
 
     render(onlineMap) {
-        // Ищем в активном контейнере — staff-combined-body имеет приоритет
-        const activeBody = document.querySelector('#staff-combined-body');
-        const container = activeBody?.querySelector('#paid-groups') || document.getElementById('paid-groups');
+        // Ищем контейнер: сначала в staff-combined-body, потом глобально
+        const activeBody = document.getElementById('staff-combined-body');
+        let container = null;
+        if (activeBody) container = activeBody.querySelector('[data-paid-container]') || activeBody.querySelector('.staff-groups');
+        if (!container) container = document.getElementById('paid-groups');
         if (!container) return;
         if (!AuthManager.hasAccess()) return;
 
@@ -666,6 +668,9 @@ const StaffManager = {
             this.admins = all.filter(a => !STAFF_GROUPS_EXCLUDE.includes(a.group_name));
             this.adminMap = {};
             for (const a of this.admins) this.adminMap[a.steamid] = a;
+
+            // Также грузим покупных из того же файла
+            PaidManager.admins = all.filter(a => STAFF_GROUPS_EXCLUDE.includes(a.group_name));
         } catch (e) {
             console.warn('admins.json not loaded:', e.message);
         }
@@ -710,9 +715,11 @@ const StaffManager = {
     },
 
     render(onlineMap) {
-        // Ищем в активном контейнере — staff-combined-body имеет приоритет
-        const activeBody = document.querySelector('#staff-combined-body');
-        const container = activeBody?.querySelector('#staff-groups') || document.getElementById('staff-groups');
+        // Ищем контейнер: сначала в staff-combined-body, потом глобально
+        const activeBody = document.getElementById('staff-combined-body');
+        let container = null;
+        if (activeBody) container = activeBody.querySelector('[data-staff-container]') || activeBody.querySelector('.staff-groups');
+        if (!container) container = document.getElementById('staff-groups');
         if (!container) return;
         container.innerHTML = '';
 
@@ -1261,7 +1268,6 @@ function createPlayerCard(player) {
     card.dataset.steamid = player.steam_id;
     card.dataset.nickname = player.nickname.toLowerCase();
 
-    const kd = UI.calculateKD(player.kills, player.deaths);
     const pingClass = UI.getPingClass(player.ping);
     const ageClass = UI.getAccountAgeClass(player.accountDate);
     const timeAgo = UI.getTimeAgo(player.accountDate);
@@ -1276,8 +1282,8 @@ function createPlayerCard(player) {
     const safeServerMap  = escapeHtml(player.server.map);
     const safeAddress    = escapeHtml(`${player.server.ip}:${player.server.port}`);
     const safeAvatarUrl  = escapeHtml(avatarUrl);
+    const gameTag        = getServerGameTag(player.server.ip, player.server.port);
 
-    // Ник на сайте (из admins.json)
     const siteAdmin = StaffManager.adminMap[player.steam_id];
     const siteNick = siteAdmin?.name || null;
     const customNick = getCustomNick(player.steam_id);
@@ -1286,56 +1292,90 @@ function createPlayerCard(player) {
         ? `<div class="player-site-nick" title="Известен как" onclick="editNickPopup('${escapeHtml(player.steam_id)}', '${escapeHtml(userNicknames[player.steam_id] || '')}', event)">✏️ ${escapeHtml(subNick)}</div>`
         : `<div class="player-site-nick player-site-nick-empty" onclick="editNickPopup('${escapeHtml(player.steam_id)}', '', event)" title="Добавить ник">✏️</div>`;
 
+    const dateStr = UI.formatDate(player.accountDate);
+    const dateTimeStr = UI.formatDateTime(player.accountDate);
+
     card.innerHTML = `
-        ${player.is_admin ? '<span class="admin-badge">ADMIN</span>' : ''}
         ${player.isRecentVac ? `
         <div class="vac-badge">
             <span class="vac-badge-icon">🔨</span>
             <span class="vac-badge-text">VAC БАН (${player.vacInfo.numberOfVACBans} шт.)</span>
             <span class="vac-badge-days">${player.vacInfo.daysSinceLastBan} дн. назад</span>
         </div>` : ''}
-        <div class="player-header">
-            <img src="${safeAvatarUrl}" alt="Avatar" class="player-avatar ${avatarClass}" loading="lazy">
-            <div class="player-info">
-                <div class="player-nickname" title="${safeNickname}">${safeNickname}</div>
+
+        <div class="pc-top">
+            <div class="pc-avatar-wrap">
+                <img src="${safeAvatarUrl}" class="pc-avatar ${avatarClass}" loading="lazy"
+                     onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
+                ${player.is_admin ? '<span class="pc-admin-dot" title="Администратор">ADMIN</span>' : ''}
+            </div>
+            <div class="pc-identity">
+                <div class="pc-name" title="${safeNickname}">${safeNickname}</div>
                 ${siteNickHtml}
-                <div class="player-steamid" onclick="App.copyToClipboard('${safeSteamId}')">${safeSteamId}</div>
+                <div class="pc-steamid" onclick="App.copyToClipboard('${safeSteamId}')" title="Скопировать SteamID">${safeSteamId}</div>
             </div>
-            <span class="player-team ${teamClass}">${teamLabel}</span>
-        </div>
-        <div class="account-age ${ageClass}">
-            <div class="account-main">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                Steam аккаунт создан: <span class="account-date">${UI.formatDate(player.accountDate)}</span>
+            <div class="pc-server-block">
+                <div class="pc-server-time ${ageClass}">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    ${dateStr} · ${timeAgo}
+                </div>
+                <div class="pc-server-row">
+                    <span class="player-team ${teamClass}">${teamLabel}</span>
+                    <span class="pc-server-name">${safeServerName} ${gameTag}</span>
+                </div>
+                <div class="pc-server-map">🗺️ ${safeServerMap} &nbsp;·&nbsp; 📡 ${safeAddress}</div>
+                ${fearLastSeen ? `<div class="pc-last-seen">👁 ${UI.formatDateTime(fearLastSeen)} <span>(${UI.getTimeAgo(fearLastSeen)})</span></div>` : ''}
             </div>
-            <div class="account-ago">(${timeAgo})</div>
         </div>
-        ${fearLastSeen ? `<div class="last-seen">👁 Последний раз на серверах: <span>${UI.formatDateTime(fearLastSeen)}</span> <span class="last-seen-ago">(${UI.getTimeAgo(fearLastSeen)})</span></div>` : ''}
-        <div class="player-stats">
-            <div class="stat"><span class="stat-name">Kills</span><span class="stat-value-kills">${player.kills}</span></div>
-            <div class="stat"><span class="stat-name">Deaths</span><span class="stat-value-deaths">${player.deaths}</span></div>
-            <div class="stat"><span class="stat-name">K/D</span><span class="stat-value-kd">${kd}</span></div>
-            <div class="stat"><span class="stat-name">Ping</span><span class="stat-value-ping ${pingClass}">${player.ping}ms</span></div>
+
+        <div class="pc-stats">
+            <div class="pc-stat">
+                <span class="pc-stat-label">Убийства</span>
+                <span class="pc-stat-val kills">${player.kills}</span>
+            </div>
+            <div class="pc-stat">
+                <span class="pc-stat-label">Смерти</span>
+                <span class="pc-stat-val deaths">${player.deaths}</span>
+            </div>
+            <div class="pc-stat">
+                <span class="pc-stat-label">Пинг</span>
+                <span class="pc-stat-val ping ${pingClass}">${player.ping}ms</span>
+            </div>
         </div>
-        <div class="player-actions">
-            <button class="btn-steam" onclick="App.openSteamProfile('${safeSteamId}')">🎮 Steam</button>
-            <button class="btn-fear" onclick="App.openFearProfile('${safeSteamId}')">🌐 Fear</button>
-            <button class="btn-connect" onclick="App.connectToServer('${safeAddress}')">🎯 Connect</button>
-            <button class="btn-copy" onclick="App.copyConnect('${safeAddress}')">📋 Copy</button>
+
+        <div class="pc-actions">
+            <button class="pc-btn secondary" onclick="App.openSteamProfile('${safeSteamId}')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                Профиль Steam
+            </button>
+            <button class="pc-btn secondary" onclick="App.openFearProfile('${safeSteamId}')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                Профиль Fear
+            </button>
+            <button class="pc-btn secondary" onclick="App.copyToClipboard('${safeSteamId}')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                SteamID
+            </button>
+            <button class="pc-btn secondary" onclick="App.copyConnect('${safeAddress}')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                IP:PORT
+            </button>
+            <button class="pc-btn primary" onclick="App.connectToServer('${safeAddress}')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Подключиться
+            </button>
         </div>
-        <div class="player-actions">
+
+        <div class="pc-extra-actions">
             ${player.isClean
-                ? `<button class="btn-remove" onclick="App.removeCleanPlayer('${safeSteamId}')">❌ Убрать из чистых</button>`
-                : `<button class="btn-clean" onclick="App.addCleanPlayer('${safeSteamId}')">✅ Добавить в чистые</button>`
+                ? `<button class="pc-btn-sm danger" onclick="App.removeCleanPlayer('${safeSteamId}')">❌ Убрать из чистых</button>`
+                : `<button class="pc-btn-sm success" onclick="App.addCleanPlayer('${safeSteamId}')">✅ Чистый</button>`
             }
-        </div>
-        <div class="player-actions">
             ${TrackedManager.data[player.steam_id]
-                ? `<button class="btn-untrack" onclick="TrackedManager.remove('${safeSteamId}')">👁 Не отслеживать</button>`
-                : `<button class="btn-track" onclick="TrackedManager.add('${safeSteamId}', '${safeNickname}', '${safeAvatarUrl}')">👁 Отслеживать</button>`
+                ? `<button class="pc-btn-sm" onclick="TrackedManager.remove('${safeSteamId}')">👁 Не следить</button>`
+                : `<button class="pc-btn-sm" onclick="TrackedManager.add('${safeSteamId}', '${safeNickname}', '${safeAvatarUrl}')">👁 Следить</button>`
             }
         </div>
-        <div class="server-info">🖥️ <span class="server-name">${safeServerName}</span> | 🗺️ ${safeServerMap} ${getServerGameTag(player.server.ip, player.server.port)}</div>
     `;
     return card;
 }
@@ -1556,22 +1596,13 @@ const App = {
         body.innerHTML = '';
 
         if (validSubtab === 'staff') {
-            // Рендерим стафф напрямую — не клонируем
-            body.innerHTML = '<div class="staff-layout"><div class="staff-groups" id="staff-groups-combined"><div class="loader"><div class="loader-ring"></div><span>Загрузка...</span></div></div></div>';
+            body.innerHTML = '<div class="staff-layout"><div class="staff-groups" data-staff-container></div></div>';
             const onlineMap = Object.fromEntries(allPlayers.map(p => [p.steam_id, p]));
-            // Временно подменяем getElementById чтобы StaffManager нашёл нужный контейнер
-            const origContainer = document.getElementById('staff-groups');
-            const newContainer = body.querySelector('#staff-groups-combined');
-            if (newContainer) newContainer.id = 'staff-groups';
             StaffManager.render(onlineMap);
-            if (newContainer && origContainer) newContainer.id = 'staff-groups-combined';
         } else if (validSubtab === 'paid') {
-            body.innerHTML = '<div class="staff-layout"><div class="staff-groups" id="paid-groups-combined"><div class="loader"><div class="loader-ring"></div><span>Загрузка...</span></div></div></div>';
+            body.innerHTML = '<div class="staff-layout"><div class="staff-groups" data-paid-container></div></div>';
             const onlineMap = Object.fromEntries(allPlayers.map(p => [p.steam_id, p]));
-            const newContainer = body.querySelector('#paid-groups-combined');
-            if (newContainer) newContainer.id = 'paid-groups';
             PaidManager.render(onlineMap);
-            if (newContainer) newContainer.id = 'paid-groups-combined';
         } else if (source) {
             Array.from(source.children).forEach(child => {
                 body.appendChild(child.cloneNode(true));
