@@ -1567,13 +1567,13 @@ const App = {
         if (raw !== validSubtab) this._combinedSubTabs[combined] = validSubtab;
 
         if (combined === 'norma-combined') {
-            // Показываем/скрываем нужный контент через CSS — без переноса DOM
+            // tab-bans и tab-staffstats живут внутри tab-norma-combined
+            // Просто переключаем display — никакого клонирования
             const bansEl = document.getElementById('tab-bans');
             const statsEl = document.getElementById('tab-staffstats');
-            if (bansEl)  { bansEl.classList.toggle('active-panel',  validSubtab === 'bans');       bansEl.style.display  = validSubtab === 'bans'       ? '' : 'none'; }
-            if (statsEl) { statsEl.classList.toggle('active-panel', validSubtab === 'staffstats'); statsEl.style.display = validSubtab === 'staffstats' ? '' : 'none'; }
+            if (bansEl)  bansEl.style.display  = validSubtab === 'bans'       ? 'block' : 'none';
+            if (statsEl) statsEl.style.display = validSubtab === 'staffstats' ? 'block' : 'none';
 
-            // Запускаем нужные менеджеры
             if (validSubtab === 'bans') {
                 BansManager.startAuto();
                 StaffStatsManager._updateTicketsCard(StaffStatsManager._ticketMonthly);
@@ -1582,7 +1582,6 @@ const App = {
                 StaffStatsManager.open();
             }
         } else if (combined === 'staff-combined') {
-            // staff-combined использует StaffTab напрямую
             StaffTab.open();
         }
 
