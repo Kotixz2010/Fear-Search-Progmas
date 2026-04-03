@@ -3529,3 +3529,20 @@ body { color: var(--t1); }
 #tab-norma-combined .staffstats-layout {
     height: auto;
 }
+
+
+/* tab-bans и tab-staffstats внутри tab-norma-combined — не скрываем как tab-content */
+#tab-norma-combined #tab-bans,
+#tab-norma-combined #tab-staffstats {
+    display: block; /* переопределяется через JS */
+}
+/* bans-layout внутри norma-combined — убираем фиксированную высоту */
+#tab-norma-combined .bans-layout {
+    height: auto;
+    overflow-y: visible;
+    padding-bottom: 40px;
+}
+#tab-norma-combined .staffstats-layout {
+    height: auto;
+    padding-bottom: 40px;
+}
