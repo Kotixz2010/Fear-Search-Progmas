@@ -3546,3 +3546,49 @@ body { color: var(--t1); }
     height: auto;
     padding-bottom: 40px;
 }
+
+
+/* Критический фикс: tab-norma-combined не должен вылезать за пределы */
+#tab-norma-combined {
+    overflow: hidden !important;
+    position: relative !important;
+}
+#tab-norma-combined > div {
+    height: 100%;
+    overflow: hidden;
+}
+/* tab-bans и tab-staffstats внутри norma-combined — ограничиваем высоту */
+#tab-norma-combined #tab-bans,
+#tab-norma-combined #tab-staffstats {
+    overflow-y: auto !important;
+    max-height: calc(100vh - 48px) !important;
+}
+
+
+/* ── NORMA LAYOUT (финальный фикс) ── */
+.norma-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+.norma-panel {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+/* Убираем фиксированную высоту у bans-layout внутри norma */
+#tab-norma-combined .bans-layout {
+    height: auto;
+    overflow-y: visible;
+    padding-bottom: 20px;
+}
+#tab-norma-combined .staffstats-layout {
+    height: auto;
+    padding-bottom: 20px;
+}
+/* tab-content скрыт по умолчанию — дочерние элементы тоже скрыты */
+#tab-norma-combined:not(.active) .norma-panel,
+#tab-norma-combined:not(.active) .combined-tab-header {
+    display: none !important;
+}
