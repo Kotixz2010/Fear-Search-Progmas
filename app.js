@@ -1302,26 +1302,25 @@ function createPlayerCard(player) {
         ${player.isRecentVac ? `
         <div class="vac-badge">
             <span class="vac-badge-icon">🔨</span>
-            <span class="vac-badge-text">VAC БАН (${player.vacInfo.numberOfVACBans} шт.)</span>
-            <span class="vac-badge-days">${player.vacInfo.daysSinceLastBan} дн. назад</span>
+            <span class="vac-badge-text">VAC БАН (${player.vacInfo.numberOfVACBans} шт.) · ${player.vacInfo.daysSinceLastBan} дн. назад</span>
         </div>` : ''}
 
-        <div class="pc-header">
+        <div class="pc-row1">
             <div class="pc-avatar-wrap">
                 <img src="${safeAvatarUrl}" class="pc-avatar ${avatarClass}" loading="lazy"
                      onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg'">
-                ${player.is_admin ? '<span class="pc-admin-dot">ADMIN</span>' : ''}
+                ${player.is_admin ? '<span class="pc-admin-dot">ADM</span>' : ''}
             </div>
             <div class="pc-identity">
-                <div class="pc-name" title="${safeNickname}">${safeNickname}</div>
+                <div class="pc-name">${safeNickname}</div>
                 ${siteNickHtml}
                 <div class="pc-steamid" onclick="App.copyToClipboard('${safeSteamId}')">${safeSteamId}</div>
             </div>
         </div>
 
-        <div class="pc-info-row">
+        <div class="pc-row2">
             <div class="pc-date-block ${ageClass}">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 <div>
                     <div class="pc-date-main">${dateStr}</div>
                     <div class="pc-date-ago">${timeAgo}</div>
@@ -1332,61 +1331,35 @@ function createPlayerCard(player) {
                     <span class="player-team ${teamClass}">${teamLabel}</span>
                     <span class="pc-server-name">${safeServerName} ${gameTag}</span>
                 </div>
-                <div class="pc-server-map">🗺️ ${safeServerMap}</div>
-                <div class="pc-server-addr">🌐 ${safeAddress}</div>
+                <div class="pc-server-map">🗺️ ${safeServerMap} · 🌐 ${safeAddress}</div>
                 ${fearLastSeen ? `<div class="pc-last-seen">👁 ${UI.formatDateTime(fearLastSeen)} <span>(${UI.getTimeAgo(fearLastSeen)})</span></div>` : ''}
             </div>
         </div>
 
         <div class="pc-stats">
-            <div class="pc-stat">
-                <span class="pc-stat-label">Убийства</span>
-                <span class="pc-stat-val kills">${player.kills}</span>
-            </div>
-            <div class="pc-stat">
-                <span class="pc-stat-label">Смерти</span>
-                <span class="pc-stat-val deaths">${player.deaths}</span>
-            </div>
-            <div class="pc-stat">
-                <span class="pc-stat-label">Пинг</span>
-                <span class="pc-stat-val ping ${pingClass}">${player.ping}ms</span>
-            </div>
+            <div class="pc-stat"><span class="pc-stat-label">Убийства</span><span class="pc-stat-val kills">${player.kills}</span></div>
+            <div class="pc-stat"><span class="pc-stat-label">Смерти</span><span class="pc-stat-val deaths">${player.deaths}</span></div>
+            <div class="pc-stat"><span class="pc-stat-label">Пинг</span><span class="pc-stat-val ping ${pingClass}">${player.ping}ms</span></div>
         </div>
 
-        <div class="pc-actions-row1">
-            <button class="pc-btn-flat" onclick="App.openSteamProfile('${safeSteamId}')">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
-                Профиль Steam
-            </button>
-            <button class="pc-btn-flat" onclick="App.openFearProfile('${safeSteamId}')">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-                Профиль Fear
-            </button>
-            <button class="pc-btn-flat" onclick="App.copyToClipboard('${safeSteamId}')">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                SteamID
-            </button>
+        <div class="pc-btns1">
+            <button class="pc-btn-flat" onclick="App.openSteamProfile('${safeSteamId}')">○ Профиль Steam</button>
+            <button class="pc-btn-flat" onclick="App.openFearProfile('${safeSteamId}')">⌂ Профиль Fear</button>
+            <button class="pc-btn-flat" onclick="App.copyToClipboard('${safeSteamId}')">⎘ SteamID</button>
         </div>
-        <div class="pc-actions-row2">
-            <button class="pc-btn-flat" onclick="App.copyConnect('${safeAddress}')">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                IP:PORT
-            </button>
-            <button class="pc-btn-primary" onclick="App.connectToServer('${safeAddress}')">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Подключиться
-            </button>
+        <div class="pc-btns2">
+            <button class="pc-btn-flat" onclick="App.copyConnect('${safeAddress}')">⚇ IP:PORT</button>
+            <button class="pc-btn-primary" onclick="App.connectToServer('${safeAddress}')">▷ Подключиться</button>
         </div>
-
-        <div class="pc-extra-actions">
+        <div class="pc-btns3">
             ${player.isClean
-                ? `<button class="pc-btn-sm danger" onclick="App.removeCleanPlayer('${safeSteamId}')">❌ Убрать из чистых</button>`
-                : `<button class="pc-btn-sm success" onclick="App.addCleanPlayer('${safeSteamId}')">✅ Чистый</button>`
+                ? `<button class="pc-btn-sm danger" onclick="App.removeCleanPlayer('${safeSteamId}')">✕ Убрать из чистых</button>`
+                : `<button class="pc-btn-sm success" onclick="App.addCleanPlayer('${safeSteamId}')">✓ Чистый</button>`
             }
-            ${TrackedManager.data[player.steam_id]
-                ? `<button class="pc-btn-sm" onclick="TrackedManager.remove('${safeSteamId}')">👁 Не следить</button>`
-                : `<button class="pc-btn-sm" onclick="TrackedManager.add('${safeSteamId}', '${safeNickname}', '${safeAvatarUrl}')">👁 Следить</button>`
-            }
+            <button class="pc-btn-sm" onclick="${TrackedManager.data[player.steam_id]
+                ? `TrackedManager.remove('${safeSteamId}')`
+                : `TrackedManager.add('${safeSteamId}', '${safeNickname}', '${safeAvatarUrl}')`
+            }">👁 ${TrackedManager.data[player.steam_id] ? 'Не следить' : 'Следить'}</button>
         </div>
     `;
     return card;
