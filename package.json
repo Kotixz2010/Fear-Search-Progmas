@@ -1,46 +1,37 @@
 {
   "name": "fearsearch",
-  "version": "2.0.11",
-  "description": "FearSearch — десктоп и веб (Railway)",
+  "version": "2.9.3",
+  "description": "FearSearch - Steam РёРіСЂРѕРєРё СЃРµСЂРІРµСЂР° FearProject",
   "main": "main.js",
   "scripts": {
-    "build:icon": "node scripts/build-icon.js",
-    "prebuild": "node scripts/build-icon.js",
-    "start": "node index.js",
-    "electron": "electron .",
+    "start": "electron .",
     "dev": "electron .",
     "build": "electron-builder --win --x64",
-    "build:portable": "electron-builder --win portable --x64",
-    "release": "electron-builder --win --x64 --publish always"
+    "build:portable": "electron-builder --win portable --x64"
   },
-  "engines": {
-    "node": ">=18"
-  },
+  "keywords": [
+    "steam",
+    "cs2",
+    "fearproject"
+  ],
+  "author": "FearSearch",
+  "license": "MIT",
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "electron-updater": "^6.8.3",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "socks-proxy-agent": "^7.0.0",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "electron": "^28.0.0",
-    "electron-builder": "^24.0.0",
-    "jimp": "^0.22.12",
-    "png-to-ico": "^2.1.8"
+    "electron-builder": "^24.0.0"
   },
   "build": {
     "appId": "ru.fearproject.fearsearch",
     "productName": "FearSearch",
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "Kotixz2010",
-        "repo": "Fear-Search-Progmas"
-      }
-    ],
     "win": {
-      "icon": "icon.ico",
-      "artifactName": "FearSearch-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -48,7 +39,9 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -60,18 +53,32 @@
     },
     "files": [
       "main.js",
-      "index.js",
+      "preload.js",
       "server.js",
       "app.js",
       "index.html",
       "styles.css",
-      "admins.json",
       "icon.ico",
+      "admins.json",
+      "nicknames.json",
       "node_modules/**/*",
       "!node_modules/electron/**",
-      "!node_modules/electron-builder/**"
+      "!node_modules/electron-builder/**",
+      "!node_modules/canvas/**",
+      "theme-test.css"
     ],
-    "extraResources": [],
-    "asar": true
+    "asar": true,
+    "publish": {
+      "provider": "github",
+      "owner": "Kotixz2010",
+      "repo": "Fear-Search-Progmas"
+    },
+    "asarUnpack": [
+      "node_modules/express/**",
+      "node_modules/cors/**",
+      "node_modules/ws/**",
+      "node_modules/socks-proxy-agent/**",
+      "node_modules/socks/**"
+    ]
   }
 }
