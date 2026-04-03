@@ -607,13 +607,15 @@ const StaffTab = {
 
     open() {
         this._current = 'staff';
-        // Сбрасываем активную кнопку
         document.querySelectorAll('.staff-new-tab').forEach((b, i) => b.classList.toggle('active', i === 0));
-        // Если данных нет — показываем лоадер и грузим
-        if (StaffManager.admins.length === 0) {
-            const body = document.getElementById('staff-new-body');
+        const body = document.getElementById('staff-new-body');
+        if (StaffManager.admins.length === 0 && PaidManager.admins.length === 0) {
             if (body) body.innerHTML = '<div class="loader"><div class="loader-ring"></div><span>Загрузка стаффа...</span></div>';
-            StaffManager.load().then(() => { this._render(); this.updateBadges(); });
+            // Грузим из API если есть токен, иначе из admins.json
+            const loadPromise = AuthManager.token
+                ? AuthManager.loadAdmins()
+                : StaffManager.load();
+            loadPromise.then(() => { this._render(); this.updateBadges(); });
         } else {
             this._render();
         }
